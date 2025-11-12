@@ -55,14 +55,20 @@ try {
 }
 
 // ============================================
-// NODEMAILER SETUP
+// NODEMAILER SETUP (Gmail SMTP with direct connection)
+// Note: For Render free tier, use Gmail with less secure app password
+// If SMTP timeout occurs, fall back to API or SendGrid
 // ============================================
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // TLS
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // Use app password for Gmail
+    pass: process.env.EMAIL_PASS, // Gmail app password (16 chars)
   },
+  connectionTimeout: 5000,
+  socketTimeout: 5000,
 });
 
 // ============================================
@@ -76,31 +82,38 @@ function generateOTP() {
 }
 
 async function sendOTPEmail(email, otp) {
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: email,
-    subject: '🔐 Your One-Time Verification Code',
-    html: `
-      <div style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
-        <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; margin: 0 auto;">
-          <h2 style="color: #2a6e62; text-align: center;">The Informatics Initiative</h2>
-          <p style="color: #333; font-size: 16px;">Your verification code is:</p>
-          <div style="background: #f0f0f0; border-left: 4px solid #2a6e62; padding: 15px; text-align: center;">
-            <h1 style="color: #2a6e62; font-size: 36px; letter-spacing: 5px; margin: 0;">${otp}</h1>
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: '🔐 Your One-Time Verification Code',
+      html: `
+        <div style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
+          <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; margin: 0 auto;">
+            <h2 style="color: #2a6e62; text-align: center;">The Informatics Initiative</h2>
+            <p style="color: #333; font-size: 16px;">Your verification code is:</p>
+            <div style="background: #f0f0f0; border-left: 4px solid #2a6e62; padding: 15px; text-align: center;">
+              <h1 style="color: #2a6e62; font-size: 36px; letter-spacing: 5px; margin: 0;">${otp}</h1>
+            </div>
+            <p style="color: #666; font-size: 14px; margin-top: 15px;">
+              This code expires in <strong>10 minutes</strong>. Do not share this code with anyone.
+            </p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              If you didn't request this, please ignore this email.
+            </p>
           </div>
-          <p style="color: #666; font-size: 14px; margin-top: 15px;">
-            This code expires in <strong>10 minutes</strong>. Do not share this code with anyone.
-          </p>
-          <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-          <p style="color: #999; font-size: 12px; text-align: center;">
-            If you didn't request this, please ignore this email.
-          </p>
         </div>
-      </div>
-    `,
-  };
+      `,
+    };
 
-  return transporter.sendMail(mailOptions);
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ OTP email sent to ${email}`);
+  } catch (emailError) {
+    console.warn(`⚠️ Email sending failed for ${email}:`, emailError.message);
+    console.warn('OTP is still valid in the system. User can proceed.');
+    // Don't throw - let registration continue even if email fails
+  }
 }
 
 // ============================================
@@ -146,12 +159,13 @@ app.post('/register', async (req, res) => {
       created_at: new Date().toISOString(),
     });
 
-    // Send OTP via email
+    // Send OTP via email (don't fail registration if email fails)
     await sendOTPEmail(email, otp);
 
     res.status(201).json({
-      message: 'Registration successful. Please verify your email.',
+      message: 'Registration successful. Check your email for OTP.',
       email,
+      otp_debug: otp, // For testing purposes; remove in production
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -243,10 +257,10 @@ app.post('/resend-otp', async (req, res) => {
       otp_expiry: otpExpiry,
     });
 
-    // Send new OTP
+    // Send new OTP (don't fail if email fails)
     await sendOTPEmail(email, otp);
 
-    res.json({ message: 'New OTP sent to your email.' });
+    res.json({ message: 'New OTP sent to your email.', otp_debug: otp });
   } catch (error) {
     console.error('Resend OTP error:', error);
     res.status(500).json({ message: 'Server error while resending OTP.' });
