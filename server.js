@@ -7,7 +7,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 require('dotenv').config();
 
 const app = express();
@@ -55,21 +55,14 @@ try {
 }
 
 // ============================================
-// NODEMAILER SETUP (Gmail SMTP with direct connection)
-// Note: For Render free tier, use Gmail with less secure app password
-// If SMTP timeout occurs, fall back to API or SendGrid
+// SENDGRID EMAIL SETUP (works on Render!)
 // ============================================
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // TLS
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // Gmail app password (16 chars)
-  },
-  connectionTimeout: 5000,
-  socketTimeout: 5000,
-});
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log('✅ SendGrid configured and ready to send emails');
+} else {
+  console.warn('⚠️ SENDGRID_API_KEY not set. Emails will not be sent. Add it to Render Environment.');
+}
 
 // ============================================
 // UTILITIES
@@ -83,9 +76,9 @@ function generateOTP() {
 
 async function sendOTPEmail(email, otp) {
   try {
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
+    const msg = {
       to: email,
+      from: process.env.EMAIL_USER || 'noreply@informatics-initiative.com',
       subject: '🔐 Your One-Time Verification Code',
       html: `
         <div style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
@@ -107,12 +100,15 @@ async function sendOTPEmail(email, otp) {
       `,
     };
 
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ OTP email sent to ${email}`);
+    if (process.env.SENDGRID_API_KEY) {
+      await sgMail.send(msg);
+      console.log(`✅ OTP email sent via SendGrid to ${email}`);
+    } else {
+      console.warn(`⚠️ SENDGRID_API_KEY not configured. OTP stored but email not sent.`);
+    }
   } catch (emailError) {
     console.warn(`⚠️ Email sending failed for ${email}:`, emailError.message);
     console.warn('OTP is still valid in the system. User can proceed.');
-    // Don't throw - let registration continue even if email fails
   }
 }
 
@@ -121,6 +117,30 @@ async function sendOTPEmail(email, otp) {
 // ============================================
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ============================================
+// DEBUG ENDPOINT: GET OTP (for testing only - REMOVE IN PRODUCTION)
+// ============================================
+app.get('/api/debug/otp/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
+    
+    if (!snapshot.exists()) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const user = snapshot.val();
+    res.json({
+      email,
+      otp: user.otp,
+      otp_expiry: new Date(user.otp_expiry),
+      message: 'Debug only - remove this endpoint in production',
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error.' });
+  }
 });
 
 // ============================================
