@@ -169,6 +169,114 @@
             font-size: 2.5em;
             margin-bottom: 10px;
         }
+
+        /* --- MOBILE RESPONSIVENESS --- */
+        @media (max-width: 768px) {
+            main {
+                flex-direction: column;
+            }
+
+            .tii-ad-admin-sidebar {
+                width: 100%;
+                min-height: auto;
+                max-height: 0;
+                overflow: hidden;
+                transition: max-height 0.3s ease-out;
+                padding: 0;
+                position: relative;
+            }
+
+            .tii-ad-admin-sidebar.mobile-open {
+                max-height: 400px;
+                padding: 20px 0;
+                overflow-y: auto;
+            }
+
+            .tii-ad-admin-main {
+                width: 100%;
+                padding: 15px;
+                min-height: auto;
+            }
+
+            .tii-ad-stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tii-ad-action-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .tii-ad-submenu {
+                max-height: 150px;
+            }
+
+            .tii-ad-has-submenu.tii-ad-active > .tii-ad-submenu {
+                max-height: 200px;
+            }
+
+            .tii-ad-logout-btn {
+                width: 90%;
+                padding: 8px;
+                font-size: 0.9rem;
+            }
+
+            .tii-ad-admin-sidebar-nav h3 {
+                font-size: 0.9em;
+                padding: 10px 20px;
+            }
+
+            .tii-ad-admin-nav-links a {
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+
+            .mobile-sidebar-toggle {
+                display: block;
+                background: #2c3e50;
+                color: white;
+                border: none;
+                padding: 12px 15px;
+                cursor: pointer;
+                font-size: 1.2em;
+                width: 100%;
+                text-align: left;
+            }
+
+            .mobile-sidebar-toggle:hover {
+                background: #1a252f;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .tii-ad-action-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tii-ad-stats-grid .stat-card {
+                padding: 15px;
+            }
+
+            .tii-ad-stats-grid h4 {
+                font-size: 1.5em;
+            }
+
+            .tii-ad-admin-nav-links a {
+                padding: 8px 12px;
+                font-size: 0.85em;
+            }
+
+            .tii-ad-admin-main {
+                padding: 10px;
+            }
+
+            h2 {
+                font-size: 1.3em;
+            }
+
+            h3 {
+                font-size: 1.1em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -193,8 +301,12 @@
     </header>
 
     <main>
+        <!-- MOBILE SIDEBAR TOGGLE BUTTON -->
+        <button class="mobile-sidebar-toggle" id="mobileSidebarToggle" style="display: none;">
+            ☰ Menu
+        </button>
         
-        <div class="tii-ad-admin-sidebar">
+        <div class="tii-ad-admin-sidebar" id="adminSidebar">
             <h3 id="tii-ad-admin-welcome-text" style="padding: 0 20px; color: white;">👋 Welcome!</h3>
             
             <div class="tii-ad-admin-sidebar-nav">
@@ -323,6 +435,54 @@
         function logout(url) {
             console.log('Logging out and navigating to:', url);
         }
+
+        // --- MOBILE RESPONSIVENESS ---
+        function handleMobileResponsiveness() {
+            const sidebar = document.getElementById('adminSidebar');
+            const toggleBtn = document.getElementById('mobileSidebarToggle');
+            const isMobile = window.innerWidth <= 768;
+
+            // Show/hide toggle button based on screen size
+            if (toggleBtn) {
+                toggleBtn.style.display = isMobile ? 'block' : 'none';
+            }
+
+            // Reset sidebar state on resize
+            if (sidebar) {
+                if (!isMobile) {
+                    sidebar.classList.remove('mobile-open');
+                }
+            }
+        }
+
+        // Initial check and setup
+        handleMobileResponsiveness();
+
+        // Listen for window resize events
+        window.addEventListener('resize', handleMobileResponsiveness);
+
+        // Toggle sidebar on button click
+        const mobileToggleBtn = document.getElementById('mobileSidebarToggle');
+        if (mobileToggleBtn) {
+            mobileToggleBtn.addEventListener('click', () => {
+                const sidebar = document.getElementById('adminSidebar');
+                if (sidebar) {
+                    sidebar.classList.toggle('mobile-open');
+                }
+            });
+        }
+
+        // Close sidebar when clicking on a link (mobile)
+        document.querySelectorAll('.tii-ad-admin-nav-links a, .tii-ad-logout-btn').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth <= 768) {
+                    const sidebar = document.getElementById('adminSidebar');
+                    if (sidebar) {
+                        sidebar.classList.remove('mobile-open');
+                    }
+                }
+            });
+        });
     </script>
     
     </body>
