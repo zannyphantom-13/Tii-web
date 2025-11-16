@@ -450,6 +450,9 @@ app.post('/send_admin_token', async (req, res) => {
       console.warn(`ΓÜá∩╕Å SENDGRID_API_KEY not configured. Token not emailed. Token: ${adminToken}`);
     }
 
+    // Broadcast update to SSE clients so admin dashboards refresh instantly
+    broadcastTokenUpdate().catch(() => {});
+
     res.json({ 
       message: 'Admin token sent to admin email.',
       token: adminToken,
@@ -515,6 +518,9 @@ app.post('/admin_login', async (req, res) => {
       admin_token: null,
       admin_token_expiry: null,
     });
+
+    // Broadcast update to SSE clients so admin dashboards refresh instantly
+    broadcastTokenUpdate().catch(() => {});
 
     // Generate JWT token
     const jwtToken = jwt.sign(
@@ -624,6 +630,143 @@ app.get('/api/admin-tokens', async (req, res) => {
     console.error('List tokens error:', error);
     return res.status(500).json({ message: 'Server error.' });
   }
+});
+
+// ============================================
+// REVOKE/EXPIRE A TOKEN (admin only)
+// Body: { email, token }
+// Marks the token status as 'revoked' and clears user's active admin_token if matching
+// ============================================
+app.post('/api/admin-tokens/revoke', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (!authHeader) return res.status(401).json({ message: 'Authorization header required.' });
+    const bearer = authHeader.split(' ')[1];
+    if (!bearer) return res.status(401).json({ message: 'Bearer token required.' });
+
+    let payload;
+    try { payload = jwt.verify(bearer, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid or expired token.' }); }
+    if (payload.role !== 'admin') return res.status(403).json({ message: 'Admin access required.' });
+
+    const { email, token } = req.body;
+    if (!email || !token) return res.status(400).json({ message: 'Email and token required.' });
+
+    const userKey = email.replace(/\./g, '_');
+    const tokensSnap = await db.ref(`users/${userKey}/tokens`).get();
+    const tokens = snapshotVal(tokensSnap) || {};
+    let found = false;
+    await Promise.all(Object.keys(tokens).map(async (tk) => {
+      const t = tokens[tk];
+      if (t && t.token === token && t.status === 'active') {
+        found = true;
+        await db.ref(`users/${userKey}/tokens/${tk}`).update({ status: 'revoked', revoked_at: Date.now() });
+      }
+    }));
+
+    // Clear user's top-level admin_token if it matches
+    const userSnap = await db.ref(`users/${userKey}`).get();
+    const user = snapshotVal(userSnap);
+    if (user && user.admin_token === token) {
+      await db.ref(`users/${userKey}`).update({ admin_token: null, admin_token_expiry: null });
+    }
+
+    if (!found) return res.status(404).json({ message: 'Active token not found for that user.' });
+
+    // Broadcast update
+    broadcastTokenUpdate().catch(() => {});
+
+    return res.json({ message: 'Token revoked.' });
+  } catch (error) {
+    console.error('Revoke token error:', error);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// ============================================
+// ADMIN TOKENS SSE STREAM (server-sent events)
+// Publishes real-time changes to connected admin clients
+// ============================================
+const sseClients = new Set();
+
+async function getPendingTokensSnapshot() {
+  const snapshot = await db.ref('users').get();
+  const users = snapshotVal(snapshot) || {};
+  const pendingTokens = [];
+  Object.keys(users).forEach(userKey => {
+    const user = users[userKey];
+    if (user && user.admin_token && user.admin_token_expiry && Date.now() <= user.admin_token_expiry) {
+      const timeRemaining = Math.ceil((user.admin_token_expiry - Date.now()) / 1000);
+      pendingTokens.push({
+        email: user.email,
+        token: user.admin_token,
+        expires_in_seconds: timeRemaining,
+        expires_at: new Date(user.admin_token_expiry).toISOString(),
+        requested_at: user.admin_token_requested_at || null,
+      });
+    }
+  });
+  return pendingTokens;
+}
+
+async function broadcastTokenUpdate() {
+  try {
+    const data = { pending_tokens: await getPendingTokensSnapshot() };
+    const payload = `data: ${JSON.stringify(data)}\n\n`;
+    sseClients.forEach(res => {
+      try {
+        res.write(payload);
+      } catch (e) {
+        // ignore write errors; client will be cleaned up on close
+      }
+    });
+  } catch (e) {
+    console.warn('Failed to broadcast token update:', e && e.message ? e.message : e);
+  }
+}
+
+app.get('/api/admin-tokens/stream', async (req, res) => {
+  // Authenticate: support Authorization header or ?token=<jwt> query param (EventSource can't set headers)
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  const bearer = authHeader ? (authHeader.split(' ')[1]) : null;
+  const queryToken = req.query && req.query.token ? req.query.token : null;
+  const jwtToken = bearer || queryToken;
+
+  if (!jwtToken) {
+    res.status(401).json({ message: 'Authorization required (provide token in header or ?token= query).' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = jwt.verify(jwtToken, JWT_SECRET);
+  } catch (e) {
+    res.status(401).json({ message: 'Invalid or expired token.' });
+    return;
+  }
+
+  if (payload.role !== 'admin') {
+    res.status(403).json({ message: 'Admin access required.' });
+    return;
+  }
+
+  // Basic SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  // Send initial data snapshot
+  const initial = { pending_tokens: await getPendingTokensSnapshot() };
+  res.write(`data: ${JSON.stringify(initial)}\n\n`);
+
+  // Add to client set
+  sseClients.add(res);
+
+  // Remove client on close
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
 });
 
 // ============================================

@@ -370,10 +370,23 @@
             <p class="section-description">Visible to all admins. Tokens expire in 3 minutes. Maximum 5 active tokens system-wide.</p>
             <div id="tokens-panel" style="margin-bottom:20px;">
                 <div style="margin-bottom:10px;">
-                    <form id="generate-token-form" style="display:flex;gap:8px;align-items:center;">
-                        <input type="email" id="token-target-email" placeholder="User email for token" required style="padding:8px;flex:1;" />
-                        <button type="submit" id="generate-token-btn" class="action-tile" style="padding:8px 12px;min-width:120px;">Generate Token</button>
-                    </form>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <form id="generate-token-form" style="display:flex;gap:8px;align-items:center;flex:1;min-width:220px;">
+                                <input type="email" id="token-target-email" placeholder="User email for token" required style="padding:8px;flex:1;" />
+                                <button type="submit" id="generate-token-btn" class="action-tile" style="padding:8px 12px;min-width:120px;">Generate Token</button>
+                            </form>
+
+                            <!-- Filter & Sort -->
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input id="tokens-filter" placeholder="Filter by email" style="padding:8px;min-width:180px;" />
+                                <select id="tokens-sort" style="padding:8px;">
+                                    <option value="expires_asc">Expires ↑</option>
+                                    <option value="expires_desc">Expires ↓</option>
+                                    <option value="email_asc">Email ↑</option>
+                                    <option value="email_desc">Email ↓</option>
+                                </select>
+                            </div>
+                        </div>
                     <div id="generate-token-message" style="margin-top:8px;color:#2a6e62;font-size:0.95rem;"></div>
                 </div>
 
@@ -382,9 +395,10 @@
                         <thead>
                             <tr style="text-align:left;border-bottom:1px solid #e0e0e0;padding:6px;">
                                 <th style="padding:8px;">Email</th>
-                                <th style="padding:8px;">Token</th>
-                                <th style="padding:8px;">Expires In</th>
-                                <th style="padding:8px;">Requested At</th>
+                                    <th style="padding:8px;">Token</th>
+                                    <th style="padding:8px;">Expires In</th>
+                                    <th style="padding:8px;">Requested At</th>
+                                    <th style="padding:8px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="tokens-tbody"></tbody>
@@ -539,22 +553,70 @@
             tbody.innerHTML = '';
             if (!tokens.length) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="4" style="padding:12px;color:#666;">No active tokens</td>`;
+                tr.innerHTML = `<td colspan="5" style="padding:12px;color:#666;">No active tokens</td>`;
                 tbody.appendChild(tr);
                 return;
             }
 
-            tokens.forEach(t => {
+            // Apply client-side filter
+            const filterText = (document.getElementById('tokens-filter') || {}).value || '';
+            let filtered = tokens;
+            if (filterText) {
+                const lower = filterText.toLowerCase();
+                filtered = filtered.filter(x => (x.email || '').toLowerCase().includes(lower));
+            }
+
+            // Apply client-side sort
+            const sortVal = (document.getElementById('tokens-sort') || {}).value || 'expires_asc';
+            filtered.sort((a,b) => {
+                if (sortVal === 'expires_asc') return (a.expires_in_seconds || 0) - (b.expires_in_seconds || 0);
+                if (sortVal === 'expires_desc') return (b.expires_in_seconds || 0) - (a.expires_in_seconds || 0);
+                if (sortVal === 'email_asc') return (a.email || '').localeCompare(b.email || '');
+                if (sortVal === 'email_desc') return (b.email || '').localeCompare(a.email || '');
+                return 0;
+            });
+
+            filtered.forEach(t => {
                 const tr = document.createElement('tr');
-                const expires = t.expires_in_seconds ? `${t.expires_in_seconds}s` : (t.expires_at || 'N/A');
+                const expiresAt = t.expires_at ? new Date(t.expires_at).getTime() : (Date.now() + ((t.expires_in_seconds||0)*1000));
                 const reqAt = t.requested_at ? new Date(t.requested_at).toLocaleString() : 'N/A';
+                tr.setAttribute('data-token', t.token);
+                tr.setAttribute('data-email', t.email);
+                tr.setAttribute('data-expires-at', expiresAt);
                 tr.innerHTML = `
                     <td style="padding:8px;border-bottom:1px solid #f0f0f0;">${t.email}</td>
                     <td style="padding:8px;border-bottom:1px solid #f0f0f0;font-weight:700;">${t.token}</td>
-                    <td style="padding:8px;border-bottom:1px solid #f0f0f0;color:#c0392b;">${expires}</td>
+                    <td class="token-countdown" style="padding:8px;border-bottom:1px solid #f0f0f0;color:#c0392b;">${t.expires_in_seconds ? t.expires_in_seconds + 's' : t.expires_at}</td>
                     <td style="padding:8px;border-bottom:1px solid #f0f0f0;">${reqAt}</td>
+                    <td style="padding:8px;border-bottom:1px solid #f0f0f0;"><button class="revoke-btn" data-email="${t.email}" data-token="${t.token}" style="padding:6px 8px;background:#c0392b;color:white;border:none;border-radius:4px;cursor:pointer;">Revoke</button></td>
                 `;
                 tbody.appendChild(tr);
+            });
+
+            // Attach revoke handlers
+            tbody.querySelectorAll('.revoke-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const email = btn.getAttribute('data-email');
+                    const token = btn.getAttribute('data-token');
+                    const authToken = localStorage.getItem('authToken');
+                    try {
+                        const resp = await fetch(`${API_URL}/api/admin-tokens/revoke`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) },
+                            body: JSON.stringify({ email, token }),
+                        });
+                        const result = await resp.json();
+                        if (resp.ok) {
+                            // optimistic UI refresh
+                            fetchAdminTokens();
+                        } else {
+                            alert(result.message || 'Failed to revoke token');
+                        }
+                    } catch (err) {
+                        console.error('Revoke error', err);
+                        alert('Network error while revoking token');
+                    }
+                });
             });
         }
 
@@ -601,9 +663,71 @@
             });
         }
 
-        // Poll tokens every 10 seconds for near-real-time updates
-        fetchAdminTokens();
-        setInterval(fetchAdminTokens, 10000);
+        // Countdown updater for displayed tokens
+        function updateCountdowns() {
+            const rows = document.querySelectorAll('#tokens-tbody tr[data-expires-at]');
+            rows.forEach(row => {
+                const expiresAt = parseInt(row.getAttribute('data-expires-at'), 10);
+                const now = Date.now();
+                const diff = Math.max(0, Math.ceil((expiresAt - now) / 1000));
+                const countdownCell = row.querySelector('.token-countdown');
+                if (countdownCell) {
+                    countdownCell.textContent = diff > 0 ? `${diff}s` : 'Expired';
+                }
+                if (diff <= 0) {
+                    // Optionally remove expired rows from UI (they will be removed on next refresh)
+                    // row.remove();
+                }
+            });
+        }
+
+        // SSE (preferred) with fallback to polling
+        let eventSource = null;
+        function startSSE() {
+            const authToken = localStorage.getItem('authToken');
+            if (!authToken) return;
+            try {
+                eventSource = new EventSource(`${API_URL}/api/admin-tokens/stream?token=${encodeURIComponent(authToken)}`);
+                eventSource.onmessage = (ev) => {
+                    try {
+                        const payload = JSON.parse(ev.data);
+                        renderTokens(payload.pending_tokens || []);
+                    } catch (e) {
+                        console.error('Invalid SSE data', e);
+                    }
+                };
+                eventSource.onerror = (err) => {
+                    console.warn('SSE error, closing and falling back to polling', err);
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    // start polling fallback
+                    fetchAdminTokens();
+                };
+            } catch (e) {
+                console.warn('Failed to start SSE, falling back to polling', e);
+                fetchAdminTokens();
+            }
+        }
+
+        // Start SSE and also ensure countdowns update every second
+        startSSE();
+        setInterval(updateCountdowns, 1000);
+
+        // Poll fallback: run an initial fetch and also poll every 10s if SSE isn't active
+        if (!window.EventSource) {
+            fetchAdminTokens();
+            setInterval(fetchAdminTokens, 10000);
+        } else {
+            // If SSE fails to connect within a short period, also start polling as backup
+            setTimeout(() => {
+                if (!eventSource) {
+                    fetchAdminTokens();
+                    setInterval(fetchAdminTokens, 10000);
+                }
+            }, 2000);
+        }
     </script>
     
     </body>
