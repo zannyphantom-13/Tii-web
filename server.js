@@ -1,4 +1,4 @@
-// server.js - Production-ready Node.js backend for Render
+﻿// server.js - Production-ready Node.js backend for Render
 // Uses Firebase Realtime Database (free tier) and Nodemailer for OTP delivery
 
 const express = require('express');
@@ -40,16 +40,37 @@ try {
     });
   }
   db = admin.database();
-  console.log('✅ Firebase connected');
+  console.log('Γ£à Firebase connected');
 } catch (err) {
-  console.warn('⚠️ Firebase not configured. Using mock DB. For production, set FIREBASE_SERVICE_ACCOUNT and FIREBASE_DATABASE_URL.');
-  // Fallback mock DB (in-memory; data will be lost on restart)
-  // For real persistence, configure Firebase
+  console.warn('ΓÜá∩╕Å Firebase not configured. Using mock DB (in-memory storage). For production, set FIREBASE_SERVICE_ACCOUNT and FIREBASE_DATABASE_URL.');
+  
+  // In-memory mock database that persists during the session
+  const mockStore = {};
+  
   db = {
     ref: (path) => ({
-      set: async (data) => { console.log(`Mock DB set: ${path}`, data); },
-      get: async () => ({ val: () => null }),
+      set: async (data) => {
+        mockStore[path] = data;
+        console.log(`Γ£à Mock DB set: ${path}`, data);
+        return { key: path };
+      },
+      get: async () => {
+        const data = mockStore[path];
+        return {
+          val: () => data || null,
+          exists: () => data !== undefined && data !== null,
+        };
+      },
       on: (event, callback) => { },
+      update: async (updates) => {
+        if (mockStore[path]) {
+          mockStore[path] = { ...mockStore[path], ...updates };
+          console.log(`Γ£à Mock DB update: ${path}`, mockStore[path]);
+        }
+      },
+      push: async () => ({ key: 'mock-key' }),
+    }),
+  };
     }),
   };
 }
@@ -59,9 +80,9 @@ try {
 // ============================================
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  console.log('✅ SendGrid configured and ready to send emails');
+  console.log('Γ£à SendGrid configured and ready to send emails');
 } else {
-  console.warn('⚠️ SENDGRID_API_KEY not set. Emails will not be sent. Add it to Render Environment.');
+  console.warn('ΓÜá∩╕Å SENDGRID_API_KEY not set. Emails will not be sent. Add it to Render Environment.');
 }
 
 // ============================================
@@ -74,12 +95,27 @@ function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+// Helper function to safely check if snapshot exists
+function snapshotExists(snapshot) {
+  if (!snapshot) return false;
+  if (typeof snapshot.exists === 'function') return snapshot.exists();
+  if (typeof snapshot.exists === 'boolean') return snapshot.exists;
+  return snapshot.val() !== null && snapshot.val() !== undefined;
+}
+
+// Helper to safely get snapshot value
+function snapshotVal(snapshot) {
+  if (!snapshot) return null;
+  if (typeof snapshot.val === 'function') return snapshot.val();
+  return snapshot;
+}
+
 async function sendOTPEmail(email, otp) {
   try {
     const msg = {
       to: email,
       from: process.env.EMAIL_USER || 'noreply@informatics-initiative.com',
-      subject: '🔐 Your One-Time Verification Code',
+      subject: '≡ƒöÉ Your One-Time Verification Code',
       html: `
         <div style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
           <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; margin: 0 auto;">
@@ -102,12 +138,12 @@ async function sendOTPEmail(email, otp) {
 
     if (process.env.SENDGRID_API_KEY) {
       await sgMail.send(msg);
-      console.log(`✅ OTP email sent via SendGrid to ${email}`);
+      console.log(`Γ£à OTP email sent via SendGrid to ${email}`);
     } else {
-      console.warn(`⚠️ SENDGRID_API_KEY not configured. OTP stored but email not sent.`);
+      console.warn(`ΓÜá∩╕Å SENDGRID_API_KEY not configured. OTP stored but email not sent.`);
     }
   } catch (emailError) {
-    console.warn(`⚠️ Email sending failed for ${email}:`, emailError.message);
+    console.warn(`ΓÜá∩╕Å Email sending failed for ${email}:`, emailError.message);
     console.warn('OTP is still valid in the system. User can proceed.');
   }
 }
@@ -148,163 +184,56 @@ app.get('/api/debug/otp/:email', async (req, res) => {
 // ============================================
 app.post('/register', async (req, res) => {
   try {
-    const { full_name, email, password } = req.body;
+    const { full_name, email, password, phone_number, date_of_birth, country, bio, security_question, security_answer } = req.body;
 
-    if (!full_name || !email || !password) {
+    if (!full_name || !email || !password || !security_question || !security_answer) {
       return res.status(400).json({ message: 'Missing required fields.' });
     }
 
     // Check if user exists
     const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
-    if (snapshot.exists()) {
+    if (snapshotExists(snapshot)) {
       return res.status(400).json({ message: 'Email already registered.' });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Optionally allow disabling OTP flow for quicker testing/deploys
-    if (process.env.DISABLE_OTP === 'true') {
-      await db.ref(`users/${email.replace(/\./g, '_')}`).set({
-        full_name,
-        email,
-        password: hashedPassword,
-        role: 'student',
-        verified: true,
-        admin_token: null,
-        created_at: new Date().toISOString(),
-      });
-
-      // Return an auth token so the frontend can proceed immediately
-      const token = jwt.sign({ email, role: 'student' }, JWT_SECRET, { expiresIn: '7d' });
-      return res.status(201).json({
-        message: 'Registration successful. OTP disabled.',
-        email,
-        authToken: token,
-      });
-    }
-
-    // Generate OTP
-    const otp = generateOTP();
-    const otpExpiry = Date.now() + OTP_EXPIRY;
-
-    // Store user with OTP in Firebase
+    // Store user in Firebase (verified immediately)
     await db.ref(`users/${email.replace(/\./g, '_')}`).set({
       full_name,
       email,
       password: hashedPassword,
+      phone_number: phone_number || '',
+      date_of_birth: date_of_birth || '',
+      country: country || '',
+      bio: bio || '',
+      security_question,
+      security_answer: security_answer.toLowerCase().trim(),
       role: 'student',
-      verified: false,
-      otp,
-      otp_expiry: otpExpiry,
-      created_at: new Date().toISOString(),
-    });
-
-    // Send OTP via email (don't fail registration if email fails)
-    await sendOTPEmail(email, otp);
-
-    res.status(201).json({
-      message: 'Registration successful. Check your email for OTP.',
-      email,
-      otp_debug: otp, // For testing purposes; remove in production
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error during registration.' });
-  }
-});
-
-// ============================================
-// OTP VERIFICATION ENDPOINT
-// ============================================
-app.post('/verify-otp', async (req, res) => {
-  try {
-    const { email, otp_code } = req.body;
-
-    if (!email || !otp_code) {
-      return res.status(400).json({ message: 'Email and OTP required.' });
-    }
-
-    // Fetch user from Firebase
-    const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
-    if (!snapshot.exists()) {
-      return res.status(404).json({ message: 'User not found.' });
-    }
-
-    const user = snapshot.val();
-
-    // Check OTP expiry
-    if (Date.now() > user.otp_expiry) {
-      return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
-    }
-
-    // Verify OTP
-    if (user.otp !== otp_code) {
-      return res.status(400).json({ message: 'Invalid OTP.' });
-    }
-
-    // Mark user as verified
-    await db.ref(`users/${email.replace(/\./g, '_')}`).update({
       verified: true,
-      otp: null,
-      otp_expiry: null,
+      // initialize tokens container so frontend can read it reliably
+      tokens: {},
+      created_at: new Date().toISOString(),
     });
 
     // Generate JWT token
     const token = jwt.sign(
-      { email, role: user.role },
+      { email, role: 'student' },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({
-      message: 'Email verified successfully.',
+    res.status(201).json({
+      message: 'Registration successful.',
       authToken: token,
-      full_name: user.full_name,
-      role: user.role,
+      full_name,
+      role: 'student',
+      email,
     });
   } catch (error) {
-    console.error('OTP verification error:', error);
-    res.status(500).json({ message: 'Server error during verification.' });
-  }
-});
-
-// ============================================
-// RESEND OTP ENDPOINT
-// ============================================
-app.post('/resend-otp', async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: 'Email required.' });
-    }
-
-    // Fetch user
-    const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
-    if (!snapshot.exists()) {
-      return res.status(404).json({ message: 'User not found.' });
-    }
-
-    const user = snapshot.val();
-
-    // Generate new OTP
-    const otp = generateOTP();
-    const otpExpiry = Date.now() + OTP_EXPIRY;
-
-    // Update user with new OTP
-    await db.ref(`users/${email.replace(/\./g, '_')}`).update({
-      otp,
-      otp_expiry: otpExpiry,
-    });
-
-    // Send new OTP (don't fail if email fails)
-    await sendOTPEmail(email, otp);
-
-    res.json({ message: 'New OTP sent to your email.', otp_debug: otp });
-  } catch (error) {
-    console.error('Resend OTP error:', error);
-    res.status(500).json({ message: 'Server error while resending OTP.' });
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Server error during registration.' });
   }
 });
 
@@ -321,40 +250,16 @@ app.post('/login', async (req, res) => {
 
     // Fetch user
     const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
-    if (!snapshot.exists()) {
+    if (!snapshotExists(snapshot)) {
       return res.status(401).json({ message: 'Invalid credentials.' });
     }
 
-    const user = snapshot.val();
+    const user = snapshotVal(snapshot);
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ message: 'Invalid credentials.' });
-    }
-
-    // Check if verified
-    if (!user.verified) {
-      // If OTP is disabled via env, auto-verify and continue
-      if (process.env.DISABLE_OTP === 'true') {
-        await db.ref(`users/${email.replace(/\./g, '_')}`).update({ verified: true });
-      } else {
-        // Generate OTP for verification
-        const otp = generateOTP();
-        const otpExpiry = Date.now() + OTP_EXPIRY;
-
-        await db.ref(`users/${email.replace(/\./g, '_')}`).update({
-          otp,
-          otp_expiry: otpExpiry,
-        });
-
-        await sendOTPEmail(email, otp);
-
-        return res.status(403).json({
-          message: 'Please verify your email first.',
-          action: 'redirect_to_otp',
-        });
-      }
     }
 
     // Generate JWT token
@@ -369,6 +274,7 @@ app.post('/login', async (req, res) => {
       authToken: token,
       full_name: user.full_name,
       role: user.role,
+      email: user.email,
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -389,11 +295,11 @@ app.post('/admin_login_check', async (req, res) => {
 
     // Fetch user
     const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
-    if (!snapshot.exists()) {
+    if (!snapshotExists(snapshot)) {
       return res.status(401).json({ message: 'Invalid credentials.' });
     }
 
-    const user = snapshot.val();
+    const user = snapshotVal(snapshot);
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -414,6 +320,7 @@ app.post('/admin_login_check', async (req, res) => {
         authToken: token,
         full_name: user.full_name,
         role: 'admin',
+        email: user.email,
       });
     }
 
@@ -441,7 +348,7 @@ app.post('/send_admin_token', async (req, res) => {
 
     // Fetch user
     const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
-    if (!snapshot.exists()) {
+    if (!snapshotExists(snapshot)) {
       return res.status(404).json({ message: 'User not found.' });
     }
 
@@ -455,24 +362,67 @@ app.post('/send_admin_token', async (req, res) => {
       admin_token_expiry: tokenExpiry,
     });
 
-    // Send token via email (send to admin email from env)
-    // Send token via SendGrid (preferred; falls back to log when not configured)
-    const adminMsg = {
-      to: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,
+    // Also persist the token under the user's tokens list so tokens can be listed per email
+    try {
+      await db.ref(`users/${email.replace(/\./g, '_')}/tokens`).push({
+        token: adminToken,
+        expires_at: tokenExpiry,
+        created_at: Date.now(),
+      });
+    } catch (e) {
+      console.warn('Failed to persist admin token under user tokens:', e && e.message ? e.message : e);
+    }
+
+    // Log token generation
+    console.log("============================================================");
+    console.log("≡ƒöÉ ADMIN TOKEN GENERATED");
+    console.log("============================================================");
+    console.log(`≡ƒôº User Email: ${email}`);
+    console.log(`≡ƒöæ Admin Token: ${adminToken}`);
+    console.log(`ΓÅ░ Token Expiry: ${new Date(tokenExpiry).toISOString()}`);
+    console.log(`ΓÅ│ Valid for: 10 minutes`);
+    console.log("============================================================");
+
+    // Send token via SendGrid email
+    const msg = {
+      to: process.env.ADMIN_EMAIL || process.env.EMAIL_USER || 'admin@informatics-initiative.com',
       from: process.env.EMAIL_USER || 'noreply@informatics-initiative.com',
-      subject: `Admin Access Request from ${email}`,
-      html: `<p>Admin token: <strong>${adminToken}</strong></p><p>User: ${email}</p>`,
+      subject: `≡ƒöÉ Admin Access Request from ${email}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px;">
+          <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; margin: 0 auto;">
+            <h2 style="color: #2a6e62; text-align: center;">The Informatics Initiative</h2>
+            <p style="color: #333; font-size: 16px;">Admin Access Request</p>
+            <p style="color: #666;">A user is attempting to access the Admin Portal:</p>
+            <p><strong>User Email:</strong> ${email}</p>
+            <div style="background: #f0f0f0; border-left: 4px solid #2a6e62; padding: 15px; text-align: center; margin: 20px 0;">
+              <p style="margin: 0; color: #666;">Your Admin Token:</p>
+              <h1 style="color: #2a6e62; font-size: 36px; letter-spacing: 5px; margin: 10px 0;">${adminToken}</h1>
+            </div>
+            <p style="color: #666; font-size: 14px;">
+              This token expires in <strong>10 minutes</strong>. Do not share this token with anyone.
+            </p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              If you didn't initiate this request, please ignore this email.
+            </p>
+          </div>
+        </div>
+      `,
     };
 
     if (process.env.SENDGRID_API_KEY) {
-      await sgMail.send(adminMsg);
-      console.log(`✅ Admin token email sent to ${adminMsg.to}`);
+      await sgMail.send(msg);
+      console.log(`Γ£à Admin token email sent to: ${msg.to}`);
     } else {
-      console.warn('⚠️ SENDGRID_API_KEY not configured. Admin token not emailed.');
-      console.log(`Admin token for ${email}: ${adminToken}`);
+      console.warn(`ΓÜá∩╕Å SENDGRID_API_KEY not configured. Token not emailed. Token: ${adminToken}`);
     }
 
-    res.json({ message: 'Admin token sent to admin email.' });
+    res.json({ 
+      message: 'Admin token sent to admin email.',
+      token: adminToken,
+      expires_at: new Date(tokenExpiry).toISOString()
+    });
   } catch (error) {
     console.error('Send admin token error:', error);
     res.status(500).json({ message: 'Server error.' });
@@ -492,11 +442,11 @@ app.post('/admin_login', async (req, res) => {
 
     // Fetch user
     const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
-    if (!snapshot.exists()) {
+    if (!snapshotExists(snapshot)) {
       return res.status(401).json({ message: 'User not found.' });
     }
 
-    const user = snapshot.val();
+    const user = snapshotVal(snapshot);
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -532,6 +482,7 @@ app.post('/admin_login', async (req, res) => {
       authToken: jwtToken,
       full_name: user.full_name,
       role: 'admin',
+      email: user.email,
     });
   } catch (error) {
     console.error('Admin login error:', error);
@@ -542,6 +493,115 @@ app.post('/admin_login', async (req, res) => {
 // ============================================
 // START SERVER
 // ============================================
+// Profile endpoint: returns user profile (requires Authorization: Bearer <token>)
+app.get('/api/profile', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (!authHeader) return res.status(401).json({ message: 'Authorization header required.' });
+
+    const token = authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'Bearer token required.' });
+
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch (verifyErr) {
+      return res.status(401).json({ message: 'Invalid or expired token.' });
+    }
+
+    const email = payload.email;
+    const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
+    if (!snapshotExists(snapshot)) return res.status(404).json({ message: 'User not found.' });
+
+    const user = snapshotVal(snapshot);
+    // Do not return password in profile response
+    if (user.password) delete user.password;
+
+    return res.json({ user });
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// ============================================
+// SECURITY QUESTION ENDPOINT
+// ============================================
+app.post('/api/security-question', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required.' });
+    }
+
+    // Fetch user
+    const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
+    if (!snapshotExists(snapshot)) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const user = snapshotVal(snapshot);
+
+    res.status(200).json({
+      security_question: user.security_question || 'Security question not set.',
+    });
+  } catch (error) {
+    console.error('Security question fetch error:', error);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// ============================================
+// RESET PASSWORD ENDPOINT
+// ============================================
+app.post('/reset-password', async (req, res) => {
+  try {
+    const { email, security_answer, new_password } = req.body;
+
+    if (!email || !security_answer || !new_password) {
+      return res.status(400).json({ message: 'Missing required fields.' });
+    }
+
+    // Validate new password
+    if (new_password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    // Fetch user
+    const snapshot = await db.ref(`users/${email.replace(/\./g, '_')}`).get();
+    if (!snapshotExists(snapshot)) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const user = snapshotVal(snapshot);
+
+    // Verify security answer
+    const userAnswer = user.security_answer.toLowerCase().trim();
+    const providedAnswer = security_answer.toLowerCase().trim();
+    
+    if (userAnswer !== providedAnswer) {
+      return res.status(401).json({ message: 'Security answer is incorrect.' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
+    // Update password in Firebase
+    await db.ref(`users/${email.replace(/\./g, '_')}`).update({
+      password: hashedPassword,
+      password_updated_at: new Date().toISOString(),
+    });
+
+    console.log(`Γ£à Password reset successful for user: ${email}`);
+
+    return res.status(200).json({ message: 'Password updated successfully.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    return res.status(500).json({ message: 'Server error during password reset.' });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`≡ƒÜÇ Server running on port ${PORT}`);
 });
