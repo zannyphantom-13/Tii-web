@@ -163,6 +163,27 @@ app.post('/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Optionally allow disabling OTP flow for quicker testing/deploys
+    if (process.env.DISABLE_OTP === 'true') {
+      await db.ref(`users/${email.replace(/\./g, '_')}`).set({
+        full_name,
+        email,
+        password: hashedPassword,
+        role: 'student',
+        verified: true,
+        admin_token: null,
+        created_at: new Date().toISOString(),
+      });
+
+      // Return an auth token so the frontend can proceed immediately
+      const token = jwt.sign({ email, role: 'student' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.status(201).json({
+        message: 'Registration successful. OTP disabled.',
+        email,
+        authToken: token,
+      });
+    }
+
     // Generate OTP
     const otp = generateOTP();
     const otpExpiry = Date.now() + OTP_EXPIRY;
@@ -314,21 +335,26 @@ app.post('/login', async (req, res) => {
 
     // Check if verified
     if (!user.verified) {
-      // Generate OTP for verification
-      const otp = generateOTP();
-      const otpExpiry = Date.now() + OTP_EXPIRY;
+      // If OTP is disabled via env, auto-verify and continue
+      if (process.env.DISABLE_OTP === 'true') {
+        await db.ref(`users/${email.replace(/\./g, '_')}`).update({ verified: true });
+      } else {
+        // Generate OTP for verification
+        const otp = generateOTP();
+        const otpExpiry = Date.now() + OTP_EXPIRY;
 
-      await db.ref(`users/${email.replace(/\./g, '_')}`).update({
-        otp,
-        otp_expiry: otpExpiry,
-      });
+        await db.ref(`users/${email.replace(/\./g, '_')}`).update({
+          otp,
+          otp_expiry: otpExpiry,
+        });
 
-      await sendOTPEmail(email, otp);
+        await sendOTPEmail(email, otp);
 
-      return res.status(403).json({
-        message: 'Please verify your email first.',
-        action: 'redirect_to_otp',
-      });
+        return res.status(403).json({
+          message: 'Please verify your email first.',
+          action: 'redirect_to_otp',
+        });
+      }
     }
 
     // Generate JWT token

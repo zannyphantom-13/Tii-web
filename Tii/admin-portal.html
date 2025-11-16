@@ -276,13 +276,16 @@
         window.logout = logout;
 
         const adminName = localStorage.getItem('userName') || 'Administrator';
-        document.getElementById('admin-name').textContent = adminName;
-        document.getElementById('admin-email').textContent = localStorage.getItem('userEmail') || 'admin@example.com';
-        
-        const welcomeText = document.getElementById('admin-welcome-text');
-        if (welcomeText) {
-            welcomeText.textContent = `👋 Welcome, ${adminName.split(' ')[0]}!`;
+        const adminEmail = localStorage.getItem('userEmail') || 'admin@example.com';
+
+        // Safely set the prefixed welcome text element used in this template
+        const welcomeEl = document.getElementById('tii-ad-admin-welcome-text');
+        if (welcomeEl) {
+            welcomeEl.textContent = `👋 Welcome, ${adminName.split(' ')[0]}!`;
         }
+
+        // Expose admin info on the window for other client scripts if needed
+        window.__ADMIN_INFO = { name: adminName, email: adminEmail };
     </script>
     <script>
         // --- Sidebar Toggle Logic (Prefixed) ---
