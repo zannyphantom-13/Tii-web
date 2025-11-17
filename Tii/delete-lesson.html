@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Delete Lessons - Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header><a href="admin-portal.html">← Back to Admin</a></header>
+  <main style="max-width:1000px;margin:40px auto;">
+    <h2>Manage Lessons</h2>
+    <div class="form-group">
+      <label for="course-select-delete">Course</label>
+      <select id="course-select-delete"></select>
+    </div>
+    <div id="lessons-container" style="margin-top:20px;"></div>
+    <div id="delete-lesson-message" style="margin-top:12px;"></div>
+  </main>
+  <script>
+    const API_URL = window.location.origin || 'http://localhost:3000';
+    async function loadCourses(){
+      const sel = document.getElementById('course-select-delete');
+      sel.innerHTML = '<option>Loading...</option>';
+      try{
+        const r = await fetch(API_URL + '/api/courses');
+        const data = await r.json(); sel.innerHTML=''; (data.courses||[]).forEach(c=>{ const opt = document.createElement('option'); opt.value=c.id; opt.textContent=c.title; sel.appendChild(opt); });
+        if(sel.options.length) loadLessons();
+      }catch(e){ sel.innerHTML = '<option>Failed</option>'; }
+    }
+    async function loadLessons(){
+      const courseId = document.getElementById('course-select-delete').value; const container = document.getElementById('lessons-container'); container.innerHTML='Loading...';
+      try{
+        const r = await fetch(`${API_URL}/api/courses/${courseId}/lessons`);
+        if(!r.ok){ container.innerHTML='Failed to load lessons.'; return; }
+        const data = await r.json(); const lessons = data.lessons || [];
+        if(!lessons.length){ container.innerHTML = '<p style="color:#666">No lessons for this course.</p>'; return; }
+        container.innerHTML='';
+        lessons.forEach(l=>{
+          const div = document.createElement('div'); div.style.display='flex'; div.style.justifyContent='space-between'; div.style.alignItems='center'; div.style.padding='10px'; div.style.border='1px solid #eee'; div.style.borderRadius='6px'; div.style.marginBottom='8px';
+          div.innerHTML = `<div><strong>${escapeHtml(l.title)}</strong><div style="color:#666">${(l.content||'').slice(0,200)}${(l.content||'').length>200?'...':''}</div></div>`;
+          const btn = document.createElement('button'); btn.textContent='Delete'; btn.style.background='#c0392b'; btn.style.color='#fff'; btn.style.border='none'; btn.style.padding='8px 10px'; btn.style.borderRadius='4px'; btn.addEventListener('click', ()=> deleteLesson(courseId, l.id));
+          div.appendChild(btn); container.appendChild(div);
+        });
+      }catch(e){ container.innerHTML='Network error loading lessons.'; }
+    }
+    async function deleteLesson(courseId, lessonId){ if(!confirm('Delete this lesson?')) return; const msgEl = document.getElementById('delete-lesson-message'); msgEl.textContent=''; const token = localStorage.getItem('authToken'); if(!token){ msgEl.style.color='#c0392b'; msgEl.textContent='You must be logged in as admin.'; return; }
+      try{
+        const r = await fetch(`${API_URL}/api/courses/${courseId}/lessons/${lessonId}`, { method:'DELETE', headers: { 'Authorization': 'Bearer '+token } });
+        const data = await r.json(); if(r.ok){ msgEl.style.color='#2a6e62'; msgEl.textContent='Lesson deleted.'; loadLessons(); } else { msgEl.style.color='#c0392b'; msgEl.textContent = data.message || 'Failed to delete lesson.'; }
+      }catch(e){ msgEl.style.color='#c0392b'; msgEl.textContent='Network error.'; }
+    }
+    function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+    document.getElementById('course-select-delete').addEventListener('change', loadLessons);
+    loadCourses();
+  </script>
+</body>
+</html>

@@ -932,6 +932,75 @@ app.get('/api/courses', async (req, res) => {
   }
 });
 
+// ============================================
+// LESSONS API (per-course)
+// GET /api/courses/:id/lessons
+app.get('/api/courses/:id/lessons', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const snapshot = await db.ref(`courses/${id}/lessons`).get();
+    const data = snapshotVal(snapshot) || {};
+    const lessons = Object.keys(data).map(k => ({ id: k, ...data[k] }));
+    res.json({ lessons });
+  } catch (e) {
+    console.error('Fetch lessons error:', e);
+    res.status(500).json({ message: 'Server error fetching lessons.' });
+  }
+});
+
+// POST /api/courses/:id/lessons  (admin only)
+app.post('/api/courses/:id/lessons', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+    let decoded;
+    try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
+    if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
+
+    const courseId = req.params.id;
+    const { title, content, resource_url } = req.body;
+    if (!title) return res.status(400).json({ message: 'Lesson title required.' });
+
+    const lessonId = `l_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const lesson = {
+      title,
+      content: content || '',
+      resource_url: resource_url || '',
+      created_at: new Date().toISOString(),
+      created_by: decoded.email || 'admin'
+    };
+
+    await db.ref(`courses/${courseId}/lessons/${lessonId}`).set(lesson);
+    res.status(201).json({ id: lessonId, ...lesson });
+  } catch (e) {
+    console.error('Create lesson error:', e);
+    res.status(500).json({ message: 'Server error creating lesson.' });
+  }
+});
+
+// DELETE /api/courses/:id/lessons/:lessonId (admin only)
+app.delete('/api/courses/:id/lessons/:lessonId', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+    let decoded;
+    try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
+    if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
+
+    const courseId = req.params.id;
+    const lessonId = req.params.lessonId;
+    if (!lessonId) return res.status(400).json({ message: 'Lesson id required.' });
+
+    await db.ref(`courses/${courseId}/lessons/${lessonId}`).set(null);
+    res.json({ message: 'Lesson deleted.' });
+  } catch (e) {
+    console.error('Delete lesson error:', e);
+    res.status(500).json({ message: 'Server error deleting lesson.' });
+  }
+});
+
 app.post('/api/courses', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
@@ -1024,7 +1093,7 @@ async function generateCoursePage(id, course) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${safeTitle} — The Informatics Initiative</title>
   <link rel="stylesheet" href="/Tii/styles.css">
-  <style>body{padding:30px} .course-hero{max-width:900px;margin:0 auto;background:#fff;padding:24px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.06)} .course-meta{color:#666;margin-bottom:12px}</style>
+  <style>body{padding:30px} .course-hero{max-width:900px;margin:0 auto;background:#fff;padding:24px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.06)} .course-meta{color:#666;margin-bottom:12px} .lesson-list{margin-top:18px;display:flex;flex-direction:column;gap:12px}</style>
 </head>
 <body>
   <a href="/Tii/index.html">← Back to Home</a>
@@ -1033,9 +1102,37 @@ async function generateCoursePage(id, course) {
       <h1>${safeTitle}</h1>
       <div class="course-meta">${placementLabel} • Added by ${course.created_by || 'admin'} on ${new Date(course.created_at).toLocaleString()}</div>
       <div class="course-body">${safeDesc}</div>
-      <div style="margin-top:18px;"><a class="explore-btn-secondary" href="/Tii/other-courses.html">View other courses</a></div>
+      <div class="lesson-list" id="lesson-list">
+        <p style="color:#666">Loading lessons…</p>
+      </div>
+      <div style="margin-top:18px;"><a class="explore-btn-secondary" href="/Tii/other-courses.html">Back to courses</a></div>
     </div>
   </main>
+  <script>
+    (async function(){
+      const courseId = '${id}';
+      const listEl = document.getElementById('lesson-list');
+      try {
+        const resp = await fetch('/api/courses/' + courseId + '/lessons');
+        if (!resp.ok) { listEl.innerHTML = '<p style="color:#c0392b">Failed to load lessons.</p>'; return; }
+        const data = await resp.json();
+        const lessons = data.lessons || [];
+        if (!lessons.length) { listEl.innerHTML = '<p style="color:#666">No lessons yet. Admins can upload lessons from the admin portal.</p>'; return; }
+        listEl.innerHTML = '';
+        lessons.forEach(l => {
+          const div = document.createElement('div');
+          div.className = 'lesson-card';
+          div.style.background = '#fbfffc';
+          div.style.padding = '12px';
+          div.style.border = '1px solid #e6f4ef';
+          div.style.borderRadius = '6px';
+          const resourceHtml = l.resource_url ? '<div style="margin-top:8px;"><a href="' + l.resource_url + '" target="_blank" class="explore-btn-secondary">Open Resource</a></div>' : '';
+          div.innerHTML = '<h4 style="margin:0 0 6px;">' + (l.title||'Untitled') + '</h4>' + '<div style="color:#555">' + (l.content||'').replace(/\n/g,'<br/>') + '</div>' + resourceHtml;
+          listEl.appendChild(div);
+        });
+      } catch (e) { listEl.innerHTML = '<p style="color:#c0392b">Network error loading lessons.</p>'; }
+    })();
+  </script>
 </body>
 </html>`;
 

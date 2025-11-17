@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Upload Lesson - Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header><a href="admin-portal.html">← Back to Admin</a></header>
+  <main style="max-width:800px;margin:40px auto;">
+    <h2>Upload New Lesson</h2>
+    <form id="upload-lesson-form">
+      <div class="form-group">
+        <label for="course-select">Course</label>
+        <select id="course-select" required></select>
+      </div>
+      <div class="form-group">
+        <label for="lesson-title">Lesson Title</label>
+        <input id="lesson-title" name="title" required />
+      </div>
+      <div class="form-group">
+        <label for="lesson-content">Content / Notes</label>
+        <textarea id="lesson-content" name="content" rows="6"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="resource-url">Resource URL (optional)</label>
+        <input id="resource-url" name="resource_url" placeholder="https://..." />
+      </div>
+      <button class="submit-btn" type="submit">Upload Lesson</button>
+      <div id="upload-lesson-message" style="margin-top:12px;"></div>
+    </form>
+  </main>
+  <script>
+    const API_URL = window.location.origin || 'http://localhost:3000';
+    async function loadCourses(){
+      const sel = document.getElementById('course-select');
+      sel.innerHTML = '<option>Loading...</option>';
+      try{
+        const r = await fetch(API_URL + '/api/courses');
+        if(!r.ok){ sel.innerHTML = '<option value="">Failed to load</option>'; return; }
+        const data = await r.json();
+        sel.innerHTML = '';
+        (data.courses||[]).forEach(c=>{
+          const opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.title + ' (' + (c.placement||'other') + ')'; sel.appendChild(opt);
+        });
+      }catch(e){ sel.innerHTML = '<option value="">Network error</option>'; }
+    }
+    document.getElementById('upload-lesson-form').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const msgEl = document.getElementById('upload-lesson-message'); msgEl.textContent = '';
+      const courseId = document.getElementById('course-select').value;
+      const title = document.getElementById('lesson-title').value.trim();
+      const content = document.getElementById('lesson-content').value.trim();
+      const resource_url = document.getElementById('resource-url').value.trim();
+      const token = localStorage.getItem('authToken');
+      if(!token){ msgEl.style.color='#c0392b'; msgEl.textContent='You must be logged in as admin.'; return; }
+      try{
+        const resp = await fetch(`${API_URL}/api/courses/${courseId}/lessons`,{
+          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({ title, content, resource_url })
+        });
+        const data = await resp.json();
+        if(resp.ok){ msgEl.style.color='#2a6e62'; msgEl.textContent='Lesson uploaded.'; document.getElementById('upload-lesson-form').reset(); }
+        else{ msgEl.style.color='#c0392b'; msgEl.textContent = data.message || 'Failed to upload lesson.'; }
+      }catch(err){ msgEl.style.color='#c0392b'; msgEl.textContent='Network error: '+err.message; }
+    });
+    loadCourses();
+  </script>
+</body>
+</html>
