@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete Course - Admin</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="user-loader.js"></script>
+</head>
+<body>
+    <header>
+        <a href="admin-portal.html">← Back to Admin</a>
+    </header>
+    <main style="max-width:900px;margin:40px auto;">
+        <h2>Delete Existing Course</h2>
+        <div id="courses-list" style="margin-top:20px;"></div>
+        <div id="delete-course-message" style="margin-top:12px;"></div>
+    </main>
+    <script type="module">
+    import { handleAuthButton } from './auth.js';
+    handleAuthButton();
+
+    const API_URL = window.location.origin || 'http://localhost:3000';
+    const msgEl = document.getElementById('delete-course-message');
+
+    async function loadCourses() {
+        try {
+            const resp = await fetch(`${API_URL}/api/courses`);
+            const data = await resp.json();
+            const listEl = document.getElementById('courses-list');
+            listEl.innerHTML = '';
+            if (!data.courses || !data.courses.length) {
+                listEl.innerHTML = '<p>No courses found.</p>';
+                return;
+            }
+            data.courses.forEach(c => {
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.gap = '12px';
+                div.style.alignItems = 'center';
+                div.style.padding = '10px';
+                div.style.border = '1px solid #eee';
+                div.style.marginBottom = '8px';
+                div.innerHTML = `
+                    <div style="flex:1">
+                        <strong>${c.title}</strong>
+                        <div style="color:#666">${c.description}</div>
+                    </div>
+                    <div>
+                        <button data-id="${c.id}" class="delete-course-btn" style="background:#c0392b;color:white;border:none;padding:8px 10px;border-radius:6px;cursor:pointer;">Delete</button>
+                    </div>
+                `;
+                listEl.appendChild(div);
+            });
+
+            listEl.querySelectorAll('.delete-course-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.getAttribute('data-id');
+                    const token = localStorage.getItem('authToken');
+                    if (!token) { msgEl.style.color = '#c0392b'; msgEl.textContent = 'You must be logged in as admin.'; return; }
+                    try {
+                        const resp = await fetch(`${API_URL}/api/courses/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                        const res = await resp.json();
+                        if (resp.ok) {
+                            msgEl.style.color = '#2a6e62'; msgEl.textContent = 'Course deleted.';
+                            loadCourses();
+                        } else {
+                            msgEl.style.color = '#c0392b'; msgEl.textContent = res.message || 'Failed to delete.';
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        msgEl.style.color = '#c0392b'; msgEl.textContent = 'Network error.';
+                    }
+                });
+            });
+        } catch (err) {
+            console.error(err);
+            document.getElementById('courses-list').innerHTML = '<p>Error loading courses.</p>';
+        }
+    }
+
+    loadCourses();
+    </script>
+</body>
+</html>

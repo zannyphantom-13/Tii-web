@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Course - Admin</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="user-loader.js"></script>
+</head>
+<body>
+    <header>
+        <a href="admin-portal.html">← Back to Admin</a>
+    </header>
+    <main style="max-width:800px;margin:40px auto;">
+        <h2>Add New Course</h2>
+        <form id="upload-course-form">
+            <div class="form-group">
+                <label for="title">Course Title</label>
+                <input id="title" name="title" required />
+            </div>
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" rows="5" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="url">Course Link (optional)</label>
+                <input id="url" name="url" placeholder="https://..." />
+            </div>
+            <div class="form-group">
+                <label for="image">Image URL (optional)</label>
+                <input id="image" name="image" placeholder="https://..." />
+            </div>
+            <button type="submit" class="submit-btn">Add Course</button>
+            <div id="upload-course-message" style="margin-top:12px;"></div>
+        </form>
+    </main>
+    <script type="module">
+    import { handleAuthButton } from './auth.js';
+    handleAuthButton();
+
+    const API_URL = window.location.origin || 'http://localhost:3000';
+
+    document.getElementById('upload-course-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('title').value.trim();
+        const description = document.getElementById('description').value.trim();
+        const url = document.getElementById('url').value.trim();
+        const image = document.getElementById('image').value.trim();
+        const msgEl = document.getElementById('upload-course-message');
+        msgEl.textContent = '';
+
+        const token = localStorage.getItem('authToken');
+        if (!token) { msgEl.style.color = '#c0392b'; msgEl.textContent = 'You must be logged in as admin.'; return; }
+
+        try {
+            const resp = await fetch(`${API_URL}/api/courses`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ title, description, url, image })
+            });
+            const result = await resp.json();
+            if (resp.ok) {
+                msgEl.style.color = '#2a6e62';
+                msgEl.textContent = 'Course added.';
+                document.getElementById('upload-course-form').reset();
+            } else {
+                msgEl.style.color = '#c0392b';
+                msgEl.textContent = result.message || 'Failed to add course.';
+            }
+        } catch (err) {
+            console.error(err);
+            msgEl.style.color = '#c0392b';
+            msgEl.textContent = 'Network error.';
+        }
+    });
+    </script>
+</body>
+</html>

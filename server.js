@@ -866,6 +866,76 @@ app.post('/reset-password', async (req, res) => {
   }
 });
 
+// ============================================
+// COURSES API
+// Admins can add/delete courses; public can list courses
+// Stored under `courses/<id>` in the DB
+// ============================================
+app.get('/api/courses', async (req, res) => {
+  try {
+    const snapshot = await db.ref('courses').get();
+    const data = snapshotVal(snapshot) || {};
+    // Transform object map to array
+    const courses = Object.keys(data).map(id => ({ id, ...data[id] }));
+    res.json({ courses });
+  } catch (error) {
+    console.error('Fetch courses error:', error);
+    res.status(500).json({ message: 'Server error fetching courses.' });
+  }
+});
+
+app.post('/api/courses', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
+    let decoded;
+    try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
+    if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
+
+    const { title, description, url, image } = req.body;
+    if (!title || !description) return res.status(400).json({ message: 'Title and description required.' });
+
+    const id = `c_${Date.now()}`;
+    const course = {
+      title,
+      description,
+      url: url || '',
+      image: image || '',
+      created_at: new Date().toISOString(),
+      created_by: decoded.email || 'admin',
+    };
+
+    await db.ref(`courses/${id}`).set(course);
+    res.status(201).json({ id, ...course });
+  } catch (error) {
+    console.error('Create course error:', error);
+    res.status(500).json({ message: 'Server error creating course.' });
+  }
+});
+
+app.delete('/api/courses/:id', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+
+    let decoded;
+    try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
+    if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
+
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ message: 'Course id required.' });
+
+    await db.ref(`courses/${id}`).set(null);
+    res.json({ message: 'Course deleted.' });
+  } catch (error) {
+    console.error('Delete course error:', error);
+    res.status(500).json({ message: 'Server error deleting course.' });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`≡ƒÜÇ Server running on port ${PORT}`);
 });
