@@ -120,8 +120,10 @@ try {
 // UTILITIES
 // ============================================
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  const secret = 'temp-secret-' + Math.random().toString(36).substr(2, 9);
   console.warn('[SECURITY] JWT_SECRET not set in environment. Using temporary key. Set JWT_SECRET in .env or environment variables!');
-  return 'temp-secret-' + Math.random().toString(36).substr(2, 9);
+  console.warn('[DEBUG] Generated temp JWT_SECRET:', secret.substring(0, 10) + '...');
+  return secret;
 })();
 const OTP_EXPIRY = 3 * 60 * 1000; // 3 minutes for admin token
 
@@ -929,10 +931,15 @@ app.post('/api/courses', async (req, res) => {
     if (!token) return res.status(401).json({ message: 'Unauthorized' });
 
     let decoded;
-    try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
+    try { 
+      decoded = jwt.verify(token, JWT_SECRET); 
+    } catch (e) { 
+      console.error('Token verification failed:', e.message);
+      return res.status(401).json({ message: 'Invalid token: ' + e.message }); 
+    }
     if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
 
-    const { title, description, url, image, placement } = req.body;
+    const { title, description, url, placement } = req.body;
     if (!title || !description) return res.status(400).json({ message: 'Title and description required.' });
 
     const id = `c_${Date.now()}`;
@@ -940,8 +947,7 @@ app.post('/api/courses', async (req, res) => {
       title,
       description,
       url: url || '',
-      placement: placement || 'other', // 'curriculum' or 'other'
-      image: image || '',
+      placement: placement || 'other',
       created_at: new Date().toISOString(),
       created_by: decoded.email || 'admin',
     };

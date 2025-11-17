@@ -27,10 +27,6 @@
                 <input id="url" name="url" placeholder="https://..." />
             </div>
             <div class="form-group">
-                <label for="image">Image URL (optional)</label>
-                <input id="image" name="image" placeholder="https://..." />
-            </div>
-            <div class="form-group">
                 <label for="placement">Display As</label>
                 <select id="placement" name="placement">
                     <option value="other">Other Courses (card)</option>
@@ -52,24 +48,26 @@
         const title = document.getElementById('title').value.trim();
         const description = document.getElementById('description').value.trim();
         const url = document.getElementById('url').value.trim();
-        const image = document.getElementById('image').value.trim();
         const msgEl = document.getElementById('upload-course-message');
         msgEl.textContent = '';
 
         const token = localStorage.getItem('authToken');
         if (!token) { msgEl.style.color = '#c0392b'; msgEl.textContent = 'You must be logged in as admin.'; return; }
 
+        console.log('Token:', token.substring(0, 20) + '...');
+
         try {
             const placement = document.getElementById('placement').value || 'other';
             const resp = await fetch(`${API_URL}/api/courses`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ title, description, url, image, placement })
+                body: JSON.stringify({ title, description, url, placement })
             });
             const result = await resp.json();
+            console.log('Response status:', resp.status, 'Body:', result);
             if (resp.ok) {
                 msgEl.style.color = '#2a6e62';
-                msgEl.textContent = 'Course added.';
+                msgEl.textContent = 'Course added successfully!';
                 document.getElementById('upload-course-form').reset();
                 // Show preview in admin page using curriculum style if selected
                 if (placement === 'curriculum') {
@@ -82,12 +80,12 @@
                 }
             } else {
                 msgEl.style.color = '#c0392b';
-                msgEl.textContent = result.message || 'Failed to add course.';
+                msgEl.textContent = `Error (${resp.status}): ${result.message || 'Failed to add course.'}`;
             }
         } catch (err) {
-            console.error(err);
+            console.error('Network error:', err);
             msgEl.style.color = '#c0392b';
-            msgEl.textContent = 'Network error.';
+            msgEl.textContent = 'Network error: ' + err.message;
         }
     });
     </script>
