@@ -364,6 +364,49 @@ main {
     padding: 0;
     list-style: none;
 }
+/* --- Other Courses Card Grid --- */
+.other-courses-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    max-width: 1100px;
+    margin: 20px auto;
+}
+
+.other-course-card {
+    background: #fff;
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.other-course-card h4 {
+    margin: 0 0 8px;
+    font-size: 1.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.other-course-card p {
+    color: #666;
+    margin: 0 0 12px;
+    font-size: 0.97em;
+    line-height: 1.5;
+    max-height: 4.5em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.other-course-card img {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
 .course-button {
     display: flex;
     justify-content: space-between;
@@ -680,6 +723,7 @@ main {
 .form-group input[type="email"],
 .form-group input[type="password"],
 .form-group input[type="tel"],
+.form-group select,
 .form-group textarea {
     width: 100%;
     padding: 10px;
@@ -699,6 +743,7 @@ main {
 .form-group input[type="email"]:focus,
 .form-group input[type="password"]:focus,
 .form-group input[type="tel"]:focus,
+.form-group select:focus,
 .form-group textarea:focus {
     border-color: #2a6e62;
     box-shadow: 0 0 0 1px #2a6e62;
