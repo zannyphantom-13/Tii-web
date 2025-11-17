@@ -70,14 +70,24 @@
                 msgEl.textContent = 'Course added successfully!';
                 document.getElementById('upload-course-form').reset();
                 // Show preview in admin page using curriculum style if selected
-                if (placement === 'curriculum') {
-                    const preview = document.createElement('a');
-                    preview.className = 'course-button';
-                    preview.href = result.url || '#';
-                    preview.style.marginTop = '12px';
-                    preview.innerHTML = `<span>${result.title}</span><i class="fas fa-chevron-right"></i>`;
-                    document.getElementById('upload-course-message').appendChild(preview);
-                }
+                // Show link to course page and an Upload Lessons button
+                const container = document.getElementById('upload-course-message');
+                const link = document.createElement('a');
+                link.href = result.url || '#';
+                link.target = '_blank';
+                link.textContent = 'Open course page';
+                link.style.display = 'inline-block';
+                link.style.marginRight = '12px';
+                link.className = 'explore-btn-secondary';
+                container.appendChild(link);
+
+                const uploadBtn = document.createElement('a');
+                uploadBtn.href = `upload-lesson.html?course=${result.id}`;
+                uploadBtn.textContent = 'Upload lessons to this course';
+                uploadBtn.className = 'explore-btn-secondary';
+                uploadBtn.style.display = 'inline-block';
+                uploadBtn.style.marginLeft = '6px';
+                container.appendChild(uploadBtn);
             } else {
                 msgEl.style.color = '#c0392b';
                 msgEl.textContent = `Error (${resp.status}): ${result.message || 'Failed to add course.'}`;

@@ -25,6 +25,12 @@
       try{
         const r = await fetch(API_URL + '/api/courses');
         const data = await r.json(); sel.innerHTML=''; (data.courses||[]).forEach(c=>{ const opt = document.createElement('option'); opt.value=c.id; opt.textContent=c.title; sel.appendChild(opt); });
+        // If URL includes ?course=<id>, preselect it
+        const params = new URLSearchParams(window.location.search);
+        const pre = params.get('course');
+        if (pre) {
+          try { sel.value = pre; } catch(e){}
+        }
         if(sel.options.length) loadLessons();
       }catch(e){ sel.innerHTML = '<option>Failed</option>'; }
     }

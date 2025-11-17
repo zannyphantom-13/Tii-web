@@ -44,6 +44,12 @@
         (data.courses||[]).forEach(c=>{
           const opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.title + ' (' + (c.placement||'other') + ')'; sel.appendChild(opt);
         });
+        // If URL includes ?course=<id>, preselect it
+        const params = new URLSearchParams(window.location.search);
+        const pre = params.get('course');
+        if (pre) {
+          try { sel.value = pre; } catch(e){}
+        }
       }catch(e){ sel.innerHTML = '<option value="">Network error</option>'; }
     }
     document.getElementById('upload-lesson-form').addEventListener('submit', async (e)=>{
