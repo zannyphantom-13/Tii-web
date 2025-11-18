@@ -1,14 +1,132 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0;url=/Tii/courses/chemistry.html">
-  <meta name="robots" content="noindex">
-  <title>Redirecting…</title>
-  <script>location.replace('/Tii/courses/chemistry.html');</script>
-  <style>body{font-family:system-ui,Arial,sans-serif;padding:40px;color:#2a6e62}</style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Computational Chemistry — The Informatics Initiative</title>
+    <link rel="stylesheet" href="/Tii/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
-  <p>Redirecting to <a href="/Tii/courses/chemistry.html">Computational Chemistry</a>…</p>
+    <header>
+        <a href="/Tii/index.html">
+            <div class="logo-container">
+                <h1>THE INFORMATICS INITIATIVE</h1>
+            </div>
+        </a>
+        <nav class="main-nav">
+            <a href="/Tii/curriculum.html">Curriculum</a>
+            <a href="/Tii/lessons.html">Weekly Lessons</a>
+            <a href="/Tii/portal.html">Student Portal</a>
+            <a href="/Tii/feedback.html">Feedback</a>
+        </nav>
+        <a id="auth-button" href="/Tii/login.html" class="login-btn">Login</a>
+    </header>
+
+    <main>
+        <h2>Computational Chemistry</h2>
+        <p id="course-description">A pathway exploring computational approaches in chemistry.</p>
+
+        <div id="course-actions" style="margin-bottom:16px;">
+            <!-- Admin links will be injected here when JWT present -->
+        </div>
+
+        <div id="lessons" class="lesson-list">
+            Loading lessons...
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 The Informatics Initiative</p>
+    </footer>
+
+    <script>
+    (async function(){
+        const COURSE_ID = 'computational-chemistry';
+        const apiBase = window.location.origin || 'http://localhost:3000';
+        const rl = document.getElementById('lessons');
+
+        function renderLessons(list){
+            if(!list || !list.length){ rl.innerHTML = '<p>No lessons yet.</p>'; return; }
+            rl.innerHTML = '';
+            list.forEach(ls => {
+                const card = document.createElement('div');
+                card.className = 'lesson-card';
+
+                // Summary button
+                const summaryBtn = document.createElement('button');
+                summaryBtn.type = 'button';
+                summaryBtn.className = 'lesson-summary-btn btn';
+                summaryBtn.setAttribute('aria-expanded','false');
+                summaryBtn.textContent = ls.title || 'Untitled';
+
+                // Meta preview (topic, weeks, date)
+                const meta = document.createElement('div');
+                meta.className = 'lesson-meta';
+                const metaParts = [];
+                if (ls.topic) metaParts.push('Topic: ' + ls.topic);
+                if (ls.weeks) metaParts.push('Weeks: ' + ls.weeks);
+                if (ls.date) metaParts.push('Date: ' + ls.date);
+                meta.textContent = metaParts.join(' | ');
+
+                // Short description preview
+                const preview = document.createElement('div');
+                preview.className = 'lesson-preview';
+                preview.style.color = '#666';
+                preview.style.marginTop = '8px';
+                preview.textContent = ls.other_info || (ls.content ? (ls.content.length > 140 ? ls.content.slice(0,140) + '...' : ls.content) : '');
+
+                // Details (hidden by default)
+                const details = document.createElement('div');
+                details.className = 'lesson-details';
+                details.style.display = 'none';
+                if (ls.image_url) {
+                  const img = document.createElement('img'); img.src = ls.image_url; img.alt = ls.title || ''; img.className = 'lesson-img'; details.appendChild(img);
+                }
+                if (ls.resource_url) {
+                  const a = document.createElement('a'); a.href = ls.resource_url; a.target = '_blank'; a.className = 'lesson-resource explore-btn-secondary'; a.textContent = 'Open Resource'; details.appendChild(a);
+                }
+                const fullContent = document.createElement('div'); fullContent.style.marginTop='8px'; fullContent.innerHTML = (ls.content || '').replace(/\n/g,'<br/>'); details.appendChild(fullContent);
+
+                summaryBtn.addEventListener('click', ()=>{
+                    const expanded = summaryBtn.getAttribute('aria-expanded') === 'true';
+                    summaryBtn.setAttribute('aria-expanded', String(!expanded));
+                    details.style.display = expanded ? 'none' : 'block';
+                });
+
+                card.appendChild(summaryBtn);
+                card.appendChild(meta);
+                card.appendChild(preview);
+                card.appendChild(details);
+                rl.appendChild(card);
+            });
+        }
+
+        try{
+            const res = await fetch(`${apiBase}/api/courses/${COURSE_ID}/lessons`);
+            if(res.ok){
+                const data = await res.json();
+                renderLessons(data.lessons || data);
+            } else {
+                rl.innerHTML = '<p>Failed to load lessons.</p>';
+            }
+        }catch(e){ rl.innerHTML = '<p>Error loading lessons.</p>'; console.error(e) }
+
+        // show admin actions when token exists
+        const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+        if(token){
+            const actions = document.getElementById('course-actions');
+            actions.innerHTML = `
+                <a class="btn" href="/Tii/upload-lesson.html?course=${COURSE_ID}">Add Lesson</a>
+                <a class="btn" href="/Tii/delete-lesson.html?course=${COURSE_ID}">Manage Lessons</a>
+            `;
+        }
+    })();
+    </script>
+    <script type="module">
+        import { handleAuthButton, updatePortalLink } from '/Tii/auth.js';
+        updatePortalLink();
+        handleAuthButton();
+    </script>
 </body>
 </html>

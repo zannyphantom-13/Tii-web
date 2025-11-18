@@ -998,6 +998,24 @@ app.get('/api/courses', async (req, res) => {
   try {
     const snapshot = await db.ref('courses').get();
     const data = snapshotVal(snapshot) || {};
+    // Also include any static course pages under Tii/courses that aren't in the DB
+    try {
+      const files = fs.readdirSync(COURSES_DIR || path.join(__dirname,'Tii','courses'));
+      files.filter(f => f && f.endsWith('.html')).forEach(f => {
+        try {
+          const id = path.basename(f, '.html');
+          if (data[id]) return; // already in DB
+          const content = fs.readFileSync(path.join(COURSES_DIR, f), 'utf8');
+          // attempt to extract an H1 or <title> as title
+          let title = (content.match(/<h1[^>]*>([^<]*)<\/h1>/i) || content.match(/<title>([^<]*)<\/title>/i) || [null, id])[1] || id;
+          title = title.trim();
+          // attempt to extract description from course-body or #course-description
+          const descMatch = content.match(/<div[^>]*class="course-body"[^>]*>([\s\S]*?)<\/div>/i) || content.match(/<p[^>]*id="course-description"[^>]*>([\s\S]*?)<\/p>/i);
+          let description = descMatch ? descMatch[1].replace(/<[^>]+>/g,'').trim() : '';
+          data[id] = data[id] || { title, description, url: `/Tii/courses/${id}.html`, placement: 'curriculum', created_by: 'static' };
+        } catch (e) { /* ignore file parse errors */ }
+      });
+    } catch (e) { /* ignore if courses dir unreadable */ }
     // Transform object map to array
     const courses = Object.keys(data).map(id => ({ id, ...data[id] }));
     res.json({ courses });
@@ -1391,6 +1409,11 @@ async function generateCoursePage(id, course) {
     .lesson-img { max-width: 320px; border-radius: 6px; border: 1px solid #eee; margin-top: 8px; }
     .lesson-resource { margin-top: 8px; display: inline-block; }
     .lesson-other { margin-top: 8px; color: #666; font-style: italic; }
+    .lesson-summary-btn { width: 100%; text-align: left; background: transparent; border: 0; padding: 0; cursor: pointer; }
+    .lesson-summary-inner { padding: 10px 0; }
+    .lesson-preview { color: #444; margin-top: 8px; }
+    .lesson-details { display: none; margin-top: 12px; border-top: 1px dashed #e6f4ef; padding-top: 12px; }
+    .lesson-details.show { display: block; }
   </style>
 </head>
 <body>
@@ -1420,30 +1443,77 @@ async function generateCoursePage(id, course) {
         lessons.forEach(l => {
           const div = document.createElement('div');
           div.className = 'lesson-card';
-          const parts = [];
-          parts.push('<div class="lesson-title">' + (l.title || 'Untitled') + '</div>');
-          let meta = [];
-          if (l.topic) meta.push('<strong>Topic:</strong> ' + l.topic);
-          if (l.weeks) meta.push('<strong>Weeks:</strong> ' + l.weeks);
-          if (l.date) meta.push('<strong>Date:</strong> ' + l.date);
-          if (meta.length) parts.push('<div class="lesson-meta">' + meta.join(' | ') + '</div>');
-          if (l.image_url) parts.push('<img class="lesson-img" src="' + l.image_url + '" alt="lesson image"/>');
-          if (l.resource_url) parts.push('<a class="lesson-resource explore-btn-secondary" href="' + l.resource_url + '" target="_blank">Open Resource</a>');
-          if (l.other_info) parts.push('<div class="lesson-other">' + l.other_info + '</div>');
-          if (l.content) parts.push('<div style="margin-top:10px;color:#444">' + (l.content || '').replace(/\n/g,'<br/>') + '</div>');
-          div.innerHTML = parts.join('');
+
+          // Summary button
+          const btn = document.createElement('button');
+          btn.className = 'lesson-summary-btn';
+          const inner = document.createElement('div');
+          inner.className = 'lesson-summary-inner';
+          const title = document.createElement('div');
+          title.className = 'lesson-title';
+          title.textContent = l.title || 'Untitled';
+          inner.appendChild(title);
+          const metaParts = [];
+          if (l.topic) metaParts.push('Topic: ' + l.topic);
+          if (l.weeks) metaParts.push('Weeks: ' + l.weeks);
+          if (l.date) metaParts.push('Date: ' + l.date);
+          if (metaParts.length) {
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'lesson-meta';
+            metaDiv.textContent = metaParts.join(' | ');
+            inner.appendChild(metaDiv);
+          }
+          if (l.content && l.content.length > 140) {
+            const preview = document.createElement('div');
+            preview.className = 'lesson-preview';
+            preview.textContent = (l.content || '').substring(0, 140).trim() + '...';
+            inner.appendChild(preview);
+          } else if (l.content) {
+            const preview = document.createElement('div');
+            preview.className = 'lesson-preview';
+            preview.textContent = l.content || '';
+            inner.appendChild(preview);
+          }
+          btn.appendChild(inner);
+
+          // Details (hidden until toggle)
+          const details = document.createElement('div');
+          details.className = 'lesson-details';
+          if (l.image_url) {
+            const img = document.createElement('img');
+            img.className = 'lesson-img';
+            img.src = l.image_url;
+            img.alt = 'lesson image';
+            details.appendChild(img);
+          }
+          if (l.resource_url) {
+            const a = document.createElement('a');
+            a.className = 'lesson-resource explore-btn-secondary';
+            a.href = l.resource_url;
+            a.target = '_blank';
+            a.textContent = 'Open Resource';
+            details.appendChild(a);
+          }
+          if (l.other_info) {
+            const oi = document.createElement('div');
+            oi.className = 'lesson-other';
+            oi.textContent = l.other_info;
+            details.appendChild(oi);
+          }
+          if (l.content) {
+            const c = document.createElement('div');
+            c.style.marginTop = '10px';
+            c.style.color = '#444';
+            c.innerHTML = (l.content || '').replace(/\n/g, '<br/>');
+            details.appendChild(c);
+          }
+
+          btn.addEventListener('click', function(){ details.classList.toggle('show'); btn.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+
+          div.appendChild(btn);
+          div.appendChild(details);
           listEl.appendChild(div);
         });
-        // Show admin controls if token present in localStorage
-        try {
-          const token = localStorage && localStorage.getItem && localStorage.getItem('authToken');
-          if (token) {
-            const controls = document.createElement('div');
-            controls.style.marginTop = '18px';
-            controls.innerHTML = '<a class="explore-btn" href="/Tii/upload-lesson.html?course=' + courseId + '">Add Lesson</a> <a class="explore-btn-secondary" href="/Tii/delete-lesson.html?course=' + courseId + '">Manage Lessons</a>';
-            listEl.parentNode.appendChild(controls);
-          }
-        } catch(e) {}
       } catch (e) { listEl.innerHTML = '<p style="color:#c0392b">Network error loading lessons.</p>'; }
     })();
   </script>

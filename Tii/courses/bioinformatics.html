@@ -4,19 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Bioinformatics — The Informatics Initiative</title>
-    <link rel="stylesheet" href="../styles.css">
+    <link rel="stylesheet" href="/Tii/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
     <header>
-        <a href="../index.html"><div class="logo-container"><h1>THE INFORMATICS INITIATIVE</h1></div></a>
+        <a href="/Tii/index.html"><div class="logo-container"><h1>THE INFORMATICS INITIATIVE</h1></div></a>
         <nav class="main-nav">
-            <a href="../curriculum.html">Curriculum</a>
-            <a href="../lessons.html">Weekly Lessons</a>
-            <a href="../portal.html">Student Portal</a>
-            <a href="../feedback.html">Feedback</a>
+            <a href="/Tii/curriculum.html">Curriculum</a>
+            <a href="/Tii/lessons.html">Weekly Lessons</a>
+            <a href="/Tii/portal.html">Student Portal</a>
+            <a href="/Tii/feedback.html">Feedback</a>
         </nav>
-        <a id="auth-button" href="../login.html" class="login-btn">Login</a>
+        <a id="auth-button" href="/Tii/login.html" class="login-btn">Login</a>
     </header>
 
     <main>
@@ -36,26 +36,31 @@
         const rl = document.getElementById('lessons');
 
         try{
-            const res = await fetch(`${apiBase}/api/courses/${COURSE_ID}/lessons`);
-            if(!res.ok) return rl.innerHTML = '<p>Failed to load lessons.</p>';
-            const data = await res.json();
-            if(!data || !data.length && !data.lessons) return rl.innerHTML = '<p>No lessons yet.</p>';
-            const list = data.lessons || data;
-            rl.innerHTML = '';
-            list.forEach(ls => {
-                const div = document.createElement('div');
-                div.className = 'lesson-card';
-                div.innerHTML = `<h3>${ls.title}</h3>${ls.topic?`<p><strong>Topic:</strong> ${ls.topic}</p>`:''}${ls.image_url?`<img src="${ls.image_url}" style="max-width:280px;">`:''}<div>${ls.content||''}</div>`;
-                rl.appendChild(div);
-            });
+                const res = await fetch(`${apiBase}/api/courses/${COURSE_ID}/lessons`);
+                if(!res.ok) return rl.innerHTML = '<p>Failed to load lessons.</p>';
+                const data = await res.json();
+                if(!data || (!data.lessons || !data.lessons.length)) return rl.innerHTML = '<p>No lessons yet.</p>';
+                const list = data.lessons || [];
+                rl.innerHTML = '';
+                list.forEach(ls => {
+                    const card = document.createElement('div'); card.className = 'lesson-card';
+                    const summaryBtn = document.createElement('button'); summaryBtn.type='button'; summaryBtn.className='lesson-summary-btn btn'; summaryBtn.setAttribute('aria-expanded','false'); summaryBtn.textContent = ls.title || 'Untitled';
+                    const meta = document.createElement('div'); meta.className='lesson-meta'; meta.textContent = [(ls.topic?('Topic: '+ls.topic):''),(ls.weeks?('Weeks: '+ls.weeks):''),(ls.date?('Date: '+ls.date):'')].filter(Boolean).join(' | ');
+                    const preview = document.createElement('div'); preview.className='lesson-preview'; preview.style.color='#666'; preview.style.marginTop='8px'; preview.textContent = ls.other_info || (ls.content? (ls.content.length>140?ls.content.slice(0,140)+'...':ls.content): '');
+                    const details = document.createElement('div'); details.className='lesson-details'; details.style.display='none';
+                    if(ls.image_url){ const img=document.createElement('img'); img.src=ls.image_url; img.style.maxWidth='280px'; details.appendChild(img); }
+                    const fc = document.createElement('div'); fc.style.marginTop='8px'; fc.innerHTML=(ls.content||'').replace(/\n/g,'<br/>'); details.appendChild(fc);
+                    summaryBtn.addEventListener('click', ()=>{ const expanded = summaryBtn.getAttribute('aria-expanded')==='true'; summaryBtn.setAttribute('aria-expanded', String(!expanded)); details.style.display = expanded ? 'none' : 'block'; });
+                    card.appendChild(summaryBtn); card.appendChild(meta); card.appendChild(preview); card.appendChild(details); rl.appendChild(card);
+                });
         }catch(e){ rl.innerHTML = '<p>Error loading lessons.</p>'; console.error(e) }
 
-        const token = localStorage.getItem('token') || localStorage.getItem('authToken');
-        if(token) document.getElementById('course-actions').innerHTML = `<a class="btn" href="../upload-lesson.html?course=${COURSE_ID}">Add Lesson</a> <a class="btn" href="../delete-lesson.html?course=${COURSE_ID}">Manage Lessons</a>`;
+        // Hide inline admin controls on public course pages. Admins should use the admin portal.
+        // If you want quick links for admins, use the admin portal instead.
     })();
     </script>
     <script type="module">
-        import { handleAuthButton, updatePortalLink } from '../auth.js';
+        import { handleAuthButton, updatePortalLink } from '/Tii/auth.js';
         updatePortalLink(); handleAuthButton();
     </script>
 </body>
