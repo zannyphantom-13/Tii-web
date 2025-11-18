@@ -1367,6 +1367,10 @@ app.listen(PORT, '0.0.0.0', () => {
 // ---------------------------
 async function generateCoursePage(id, course) {
   try {
+    // Prepare safe values for insertion into the generated HTML
+    const safeTitle = (course && course.title) ? String(course.title).replace(/</g,'&lt;').replace(/>/g,'&gt;') : 'Untitled';
+    const safeDesc = (course && course.description) ? String(course.description).replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+    const placementLabel = (course && course.placement === 'curriculum') ? 'Curriculum' : ((course && course.placement) ? String(course.placement) : 'Other');
 
     const html = `<!doctype html>
 <html lang="en">
