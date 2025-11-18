@@ -169,6 +169,28 @@
             font-size: 2.5em;
             margin-bottom: 10px;
         }
+        /* Admin courses grid */
+        .tii-ad-courses-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 12px;
+        }
+        .tii-ad-course-card {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .tii-ad-course-card h4 { margin: 0 0 4px 0; }
+        .tii-ad-course-actions { display:flex; gap:8px; margin-top:auto; }
+        .tii-ad-course-actions a, .tii-ad-course-actions button { padding:8px 10px; border-radius:6px; text-decoration:none; border:none; cursor:pointer; font-size:0.95rem; }
+        .tii-ad-course-actions a.open { background:#2a6e62; color:white; }
+        .tii-ad-course-actions a.add { background:#3498db; color:white; }
+        .tii-ad-course-actions a.manage { background:#e67e22; color:white; }
 
         /* --- MOBILE RESPONSIVENESS --- */
         @media (max-width: 768px) {
@@ -415,6 +437,9 @@
                     </table>
                 </div>
             </div>
+            <!-- Admin Courses: dynamic list for quick actions (Open / Add Lesson / Manage) -->
+            <h3>Courses</h3>
+            <div id="admin-courses" class="tii-ad-courses-grid" aria-live="polite"></div>
         </div>
     </main>
 
@@ -738,6 +763,75 @@
                 }
             }, 2000);
         }
+
+            // --- Admin Courses Render (Open / Add Lesson / Manage) ---
+            async function fetchAdminCourses() {
+                try {
+                    const resp = await fetch(`${API_URL}/api/courses`);
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    const courses = Object.keys(data || {}).map(id => ({ id, ...(data[id] || {}) }));
+                    renderAdminCourses(courses);
+                } catch (err) {
+                    console.error('Failed to fetch courses for admin view', err);
+                }
+            }
+
+            function renderAdminCourses(courses) {
+                const container = document.getElementById('admin-courses');
+                if (!container) return;
+                container.innerHTML = '';
+                if (!courses || !courses.length) {
+                    container.innerHTML = '<div style="color:#666;padding:8px;">No courses available</div>';
+                    return;
+                }
+
+                const authToken = !!localStorage.getItem('authToken');
+
+                courses.forEach(c => {
+                    const card = document.createElement('div');
+                    card.className = 'tii-ad-course-card';
+                    const title = document.createElement('h4');
+                    title.textContent = c.title || c.name || ('Course ' + c.id);
+                    const desc = document.createElement('div');
+                    desc.style.fontSize = '0.95rem';
+                    desc.style.color = '#555';
+                    desc.textContent = c.description || (c.summary || '').slice(0, 140) || '';
+
+                    const actions = document.createElement('div');
+                    actions.className = 'tii-ad-course-actions';
+
+                    const openLink = document.createElement('a');
+                    openLink.href = c.url || `Tii/courses/${c.id}.html`;
+                    openLink.target = '_blank';
+                    openLink.className = 'open';
+                    openLink.textContent = 'Open';
+                    actions.appendChild(openLink);
+
+                    const addLink = document.createElement('a');
+                    addLink.href = `upload-lesson.html?course=${encodeURIComponent(c.id)}`;
+                    addLink.className = 'add';
+                    addLink.textContent = 'Add Lesson';
+                    if (authToken) actions.appendChild(addLink);
+
+                    const manageLink = document.createElement('a');
+                    manageLink.href = `delete-course.html?course=${encodeURIComponent(c.id)}`;
+                    manageLink.className = 'manage';
+                    manageLink.textContent = 'Manage';
+                    if (authToken) actions.appendChild(manageLink);
+
+                    card.appendChild(title);
+                    if (desc.textContent) card.appendChild(desc);
+                    card.appendChild(actions);
+
+                    container.appendChild(card);
+                });
+            }
+
+            // Initialize admin courses on load
+            document.addEventListener('DOMContentLoaded', () => {
+                fetchAdminCourses();
+            });
     </script>
     
     </body>
