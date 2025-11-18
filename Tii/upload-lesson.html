@@ -138,6 +138,13 @@
       const msgEl = document.getElementById('upload-lesson-message'); msgEl.textContent = '';
       const courseId = String(document.getElementById('course-select').value || '');
       if (!courseId || courseId === 'undefined') { msgEl.style.color='#c0392b'; msgEl.textContent='Please select a valid course.'; return; }
+      // Validate that the selected course exists in the authoritative list fetched earlier
+      const matched = (AVAILABLE_COURSES || []).find(ci => String(ci.id) === String(courseId));
+      if (!matched) {
+        msgEl.style.color = '#c0392b';
+        msgEl.textContent = 'Selected course not found. Please refresh the page and try again.';
+        return;
+      }
       const title = document.getElementById('lesson-title').value.trim();
       const content = document.getElementById('lesson-content').value.trim();
       const resource_url = document.getElementById('resource-url').value.trim();
