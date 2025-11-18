@@ -17,6 +17,26 @@ const COURSES_DIR = path.join(__dirname, 'Tii', 'courses');
 // Ensure courses directory exists
 try { fs.mkdirSync(COURSES_DIR, { recursive: true }); } catch (e) { console.warn('Could not create courses directory', e); }
 
+// Uploads directory for lesson images. Multer is optional — some hosts or environments may not allow installing new npm packages.
+const LESSON_UPLOAD_DIR = path.join(__dirname, 'Tii', 'uploads', 'lessons');
+try { fs.mkdirSync(LESSON_UPLOAD_DIR, { recursive: true }); } catch (e) { console.warn('Could not create lesson uploads directory', e); }
+
+// Try to load multer; if it's not available, we'll offer a base64 upload fallback so the server still runs.
+let upload = null;
+let hasMulter = false;
+try {
+  const multer = require('multer');
+  const storage = multer.diskStorage({
+    destination: function (req, file, cb) { cb(null, LESSON_UPLOAD_DIR); },
+    filename: function (req, file, cb) { cb(null, Date.now() + '_' + Math.random().toString(36).slice(2,8) + path.extname(file.originalname || '')); }
+  });
+  upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } });
+  hasMulter = true;
+  console.log('[INFO] multer available — multipart uploads enabled');
+} catch (e) {
+  console.warn('[WARN] multer is not installed. Falling back to base64 image uploads at /api/uploads/lessons/base64');
+}
+
 // ============================================
 // MIDDLEWARE
 // ============================================
@@ -938,9 +958,31 @@ app.get('/api/courses', async (req, res) => {
 app.get('/api/courses/:id/lessons', async (req, res) => {
   try {
     const id = req.params.id;
+    // If an Authorization header with a valid admin token is provided, include unpublished lessons.
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    let isAdmin = false;
+    if (token) {
+      try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        if (payload && payload.role === 'admin') isAdmin = true;
+      } catch (e) { /* ignore invalid token */ }
+    }
+
     const snapshot = await db.ref(`courses/${id}/lessons`).get();
     const data = snapshotVal(snapshot) || {};
-    const lessons = Object.keys(data).map(k => ({ id: k, ...data[k] }));
+    let lessons = Object.keys(data).map(k => ({ id: k, ...(data[k] || {}) }));
+    // filter unpublished lessons for non-admins (treat missing `published` as published)
+    if (!isAdmin) {
+      lessons = lessons.filter(l => l.published !== false);
+    }
+    // sort by order (numeric) then created_at
+    lessons.sort((a,b) => {
+      const ao = typeof a.order === 'number' ? a.order : (a.order ? Number(a.order) : 0);
+      const bo = typeof b.order === 'number' ? b.order : (b.order ? Number(b.order) : 0);
+      if (ao !== bo) return ao - bo;
+      return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+    });
     res.json({ lessons });
   } catch (e) {
     console.error('Fetch lessons error:', e);
@@ -959,7 +1001,7 @@ app.post('/api/courses/:id/lessons', async (req, res) => {
     if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
 
     const courseId = req.params.id;
-    const { title, content, resource_url } = req.body;
+    const { title, content, resource_url, weeks, topic, date, other_info, image_url } = req.body;
     if (!title) return res.status(400).json({ message: 'Lesson title required.' });
 
     const lessonId = `l_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
@@ -967,6 +1009,13 @@ app.post('/api/courses/:id/lessons', async (req, res) => {
       title,
       content: content || '',
       resource_url: resource_url || '',
+      weeks: weeks || '',
+      topic: topic || '',
+      date: date || '',
+      other_info: other_info || '',
+      image_url: image_url || '',
+      order: (typeof req.body.order === 'number') ? req.body.order : (req.body.order ? Number(req.body.order) : 0),
+      published: req.body.published === true || req.body.published === 'true' ? true : false,
       created_at: new Date().toISOString(),
       created_by: decoded.email || 'admin'
     };
@@ -1013,13 +1062,20 @@ app.put('/api/courses/:id/lessons/:lessonId', async (req, res) => {
 
     const courseId = req.params.id;
     const lessonId = req.params.lessonId;
-    const { title, content, resource_url } = req.body;
+    const { title, content, resource_url, order, published, weeks, topic, date, other_info, image_url } = req.body;
     if (!lessonId) return res.status(400).json({ message: 'Lesson id required.' });
 
     const updates = {};
     if (title !== undefined) updates.title = title;
     if (content !== undefined) updates.content = content;
     if (resource_url !== undefined) updates.resource_url = resource_url;
+    if (weeks !== undefined) updates.weeks = weeks;
+    if (topic !== undefined) updates.topic = topic;
+    if (date !== undefined) updates.date = date;
+    if (other_info !== undefined) updates.other_info = other_info;
+    if (image_url !== undefined) updates.image_url = image_url;
+    if (order !== undefined) updates.order = (typeof order === 'number') ? order : (order ? Number(order) : 0);
+    if (published !== undefined) updates.published = published === true || published === 'true' ? true : false;
     if (Object.keys(updates).length === 0) return res.status(400).json({ message: 'No updates provided.' });
 
     await db.ref(`courses/${courseId}/lessons/${lessonId}`).update({ ...updates, updated_at: new Date().toISOString(), updated_by: decoded.email || 'admin' });
@@ -1029,6 +1085,65 @@ app.put('/api/courses/:id/lessons/:lessonId', async (req, res) => {
     res.status(500).json({ message: 'Server error editing lesson.' });
   }
 });
+
+// Upload lesson image (admin only)
+if (hasMulter) {
+  app.post('/api/uploads/lessons', upload.single('image'), async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+      if (!token) return res.status(401).json({ message: 'Unauthorized' });
+      let decoded;
+      try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
+      if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
+
+      if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
+      const filename = req.file.filename;
+      const url = `/Tii/uploads/lessons/${filename}`;
+      res.json({ url });
+    } catch (e) {
+      console.error('Upload lesson image error:', e);
+      res.status(500).json({ message: 'Server error uploading image.' });
+    }
+  });
+} else {
+  // multer not available: instruct clients to use base64 endpoint or send base64 here
+  app.post('/api/uploads/lessons', async (req, res) => {
+    res.status(501).json({ message: 'Multer not available on this host. Use /api/uploads/lessons/base64 (POST JSON { filename, data })' });
+  });
+
+  // Base64 upload fallback: accepts JSON { filename, data } where data is data URL or base64 string
+  app.post('/api/uploads/lessons/base64', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+      if (!token) return res.status(401).json({ message: 'Unauthorized' });
+      let decoded;
+      try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ message: 'Invalid token' }); }
+      if (decoded.role !== 'admin') return res.status(403).json({ message: 'Admin role required' });
+
+      const { filename, data } = req.body;
+      if (!data) return res.status(400).json({ message: 'No image data provided.' });
+      // data may be a data URL: data:[<mediatype>][;base64],<data>
+      let matches = null; let b64 = data;
+      if (typeof data === 'string' && data.startsWith('data:')) {
+        matches = data.match(/^data:(.+);base64,(.+)$/);
+        if (!matches) return res.status(400).json({ message: 'Invalid data URL.' });
+        b64 = matches[2];
+      }
+      const buffer = Buffer.from(b64, 'base64');
+      const ext = filename ? path.extname(filename) : '.png';
+      const safeName = Date.now() + '_' + Math.random().toString(36).slice(2,8) + (ext || '.png');
+      const outPath = path.join(LESSON_UPLOAD_DIR, safeName);
+      await fs.promises.writeFile(outPath, buffer);
+      const url = `/Tii/uploads/lessons/${safeName}`;
+      res.json({ url });
+    } catch (e) {
+      console.error('Base64 upload error:', e);
+      res.status(500).json({ message: 'Server error saving base64 image.' });
+    }
+  });
+}
 
 app.post('/api/courses', async (req, res) => {
   try {
@@ -1081,6 +1196,32 @@ app.post('/api/courses', async (req, res) => {
   }
 });
 
+// DEBUG: unauthenticated base64 upload for local testing only
+// POST /api/uploads/lessons/debug { filename, data }
+app.post('/api/uploads/lessons/debug', async (req, res) => {
+  try {
+    const { filename, data } = req.body;
+    if (!data) return res.status(400).json({ message: 'No image data provided.' });
+    let b64 = data;
+    if (typeof data === 'string' && data.startsWith('data:')) {
+      const m = data.match(/^data:(.+);base64,(.+)$/);
+      if (!m) return res.status(400).json({ message: 'Invalid data URL.' });
+      b64 = m[2];
+    }
+    const buffer = Buffer.from(b64, 'base64');
+    const ext = filename ? path.extname(filename) : '.png';
+    const safeName = Date.now() + '_' + Math.random().toString(36).slice(2,8) + (ext || '.png');
+    const outPath = path.join(LESSON_UPLOAD_DIR, safeName);
+    await fs.promises.writeFile(outPath, buffer);
+    const url = `/Tii/uploads/lessons/${safeName}`;
+    console.log('[DEBUG] wrote', outPath);
+    res.json({ url });
+  } catch (e) {
+    console.error('Debug base64 upload error:', e);
+    res.status(500).json({ message: 'Server error saving debug image.' });
+  }
+});
+
 app.delete('/api/courses/:id', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
@@ -1111,9 +1252,6 @@ app.listen(PORT, '0.0.0.0', () => {
 // ---------------------------
 async function generateCoursePage(id, course) {
   try {
-    const safeTitle = (course.title || 'Course').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const safeDesc = (course.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
-    const placementLabel = course.placement === 'curriculum' ? 'Curriculum' : 'Supplementary Course';
 
     const html = `<!doctype html>
 <html lang="en">
@@ -1122,19 +1260,31 @@ async function generateCoursePage(id, course) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${safeTitle} — The Informatics Initiative</title>
   <link rel="stylesheet" href="/Tii/styles.css">
-  <style>body{padding:30px} .course-hero{max-width:900px;margin:0 auto;background:#fff;padding:24px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.06)} .course-meta{color:#666;margin-bottom:12px} .lesson-list{margin-top:18px;display:flex;flex-direction:column;gap:12px}</style>
+  <style>
+    body { background: #f7fafc; padding: 0; }
+    .course-hero { max-width: 900px; margin: 32px auto 0 auto; background: #fff; padding: 32px 28px 24px 28px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.07); }
+    .course-meta { color: #2a6e62; margin-bottom: 18px; font-size: 1.1em; }
+    .course-body { color: #444; margin-bottom: 18px; font-size: 1.15em; }
+    .lesson-list { margin-top: 18px; display: flex; flex-direction: column; gap: 18px; }
+    .lesson-card { background: #f9fffa; border: 1px solid #e6f4ef; border-radius: 8px; padding: 18px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+    .lesson-title { font-size: 1.2em; color: #2a6e62; margin-bottom: 6px; }
+    .lesson-meta { color: #666; font-size: 0.98em; margin-bottom: 8px; }
+    .lesson-img { max-width: 320px; border-radius: 6px; border: 1px solid #eee; margin-top: 8px; }
+    .lesson-resource { margin-top: 8px; display: inline-block; }
+    .lesson-other { margin-top: 8px; color: #666; font-style: italic; }
+  </style>
 </head>
 <body>
-  <a href="/Tii/index.html">← Back to Home</a>
+  <a href="/Tii/index.html" style="margin-left:32px;display:inline-block;margin-top:18px;color:#2a6e62">← Back to Home</a>
   <main>
     <div class="course-hero">
-      <h1>${safeTitle}</h1>
+      <h1 style="font-size:2.2em;color:#2a6e62;margin-bottom:8px;">${safeTitle}</h1>
       <div class="course-meta">${placementLabel} • Added by ${course.created_by || 'admin'} on ${new Date(course.created_at).toLocaleString()}</div>
       <div class="course-body">${safeDesc}</div>
       <div class="lesson-list" id="lesson-list">
         <p style="color:#666">Loading lessons…</p>
       </div>
-      <div style="margin-top:18px;"><a class="explore-btn-secondary" href="/Tii/other-courses.html">Back to courses</a></div>
+      <div style="margin-top:24px;"><a class="explore-btn-secondary" href="/Tii/other-courses.html">Back to courses</a></div>
     </div>
   </main>
   <script>
@@ -1151,14 +1301,30 @@ async function generateCoursePage(id, course) {
         lessons.forEach(l => {
           const div = document.createElement('div');
           div.className = 'lesson-card';
-          div.style.background = '#fbfffc';
-          div.style.padding = '12px';
-          div.style.border = '1px solid #e6f4ef';
-          div.style.borderRadius = '6px';
-          const resourceHtml = l.resource_url ? '<div style="margin-top:8px;"><a href="' + l.resource_url + '" target="_blank" class="explore-btn-secondary">Open Resource</a></div>' : '';
-          div.innerHTML = '<h4 style="margin:0 0 6px;">' + (l.title||'Untitled') + '</h4>' + '<div style="color:#555">' + (l.content||'').replace(/\n/g,'<br/>') + '</div>' + resourceHtml;
+          const parts = [];
+          parts.push(`<div class="lesson-title">${l.title||'Untitled'}</div>`);
+          let meta = [];
+          if (l.topic) meta.push(`<strong>Topic:</strong> ${l.topic}`);
+          if (l.weeks) meta.push(`<strong>Weeks:</strong> ${l.weeks}`);
+          if (l.date) meta.push(`<strong>Date:</strong> ${l.date}`);
+          if (meta.length) parts.push(`<div class="lesson-meta">${meta.join(' | ')}</div>`);
+          if (l.image_url) parts.push(`<img class="lesson-img" src="${l.image_url}" alt="lesson image"/>`);
+          if (l.resource_url) parts.push(`<a class="lesson-resource explore-btn-secondary" href="${l.resource_url}" target="_blank">Open Resource</a>`);
+          if (l.other_info) parts.push(`<div class="lesson-other">${l.other_info}</div>`);
+          if (l.content) parts.push(`<div style="margin-top:10px;color:#444">${l.content.replace(/\n/g,'<br/>')}</div>`);
+          div.innerHTML = parts.join('');
           listEl.appendChild(div);
         });
+        // Show admin controls if token present in localStorage
+        try {
+          const token = localStorage && localStorage.getItem && localStorage.getItem('authToken');
+          if (token) {
+            const controls = document.createElement('div');
+            controls.style.marginTop = '18px';
+            controls.innerHTML = '<a class="explore-btn" href="/Tii/upload-lesson.html?course=' + courseId + '">Add Lesson</a> <a class="explore-btn-secondary" href="/Tii/delete-lesson.html?course=' + courseId + '">Manage Lessons</a>';
+            listEl.parentNode.appendChild(controls);
+          }
+        } catch(e) {}
       } catch (e) { listEl.innerHTML = '<p style="color:#c0392b">Network error loading lessons.</p>'; }
     })();
   </script>
