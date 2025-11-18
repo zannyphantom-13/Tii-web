@@ -56,7 +56,9 @@
             const grid = document.createElement('div');
                 grid.className = 'other-courses-grid';
 
-            data.courses.forEach(c => {
+            data.courses
+                .filter(c => c.placement === 'other' && c.title && c.title.trim() !== '' && c.title.trim().toLowerCase() !== 'the informatics initiative')
+                .forEach(c => {
                     const card = document.createElement('div');
                     card.className = 'other-course-card';
                     card.innerHTML = `
@@ -66,7 +68,7 @@
                         ${c.url ? `<a href="${c.url}" class="explore-btn-secondary">View Course</a>` : ''}
                     `;
                     grid.appendChild(card);
-            });
+                });
             main.appendChild(grid);
         } catch (e) { console.error('Load courses failed', e); }
     })();
