@@ -116,10 +116,7 @@
         const token = localStorage.getItem('token') || localStorage.getItem('authToken');
         if(token){
             const actions = document.getElementById('course-actions');
-            actions.innerHTML = `
-                <a class="btn" href="/Tii/upload-lesson.html?course=${COURSE_ID}">Add Lesson</a>
-                <a class="btn" href="/Tii/delete-lesson.html?course=${COURSE_ID}">Manage Lessons</a>
-            `;
+            actions.innerHTML = `<a class="btn" href="/Tii/upload-lesson.html?course=${COURSE_ID}">Add Lesson</a>`;
         }
     })();
     </script>

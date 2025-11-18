@@ -49,7 +49,7 @@
         }catch(e){ rl.innerHTML = '<p>Error loading lessons.</p>'; console.error(e) }
 
         const token = localStorage.getItem('authToken');
-        if(token) document.getElementById('course-actions').innerHTML = `<a class="btn" href="/Tii/upload-lesson.html?course=${COURSE_ID}">Add Lesson</a> <a class="btn" href="/Tii/delete-lesson.html?course=${COURSE_ID}">Manage Lessons</a>`;
+        if(token) document.getElementById('course-actions').innerHTML = `<a class="btn" href="/Tii/upload-lesson.html?course=${COURSE_ID}">Add Lesson</a>`;
     })();
     </script>
     <script type="module">
