@@ -87,6 +87,15 @@
                     a.href = c.url || '#';
                     a.title = c.title || '';
 
+                    // Mark uploaded/dynamic courses differently
+                    if (c.created_by && String(c.created_by).toLowerCase() !== 'static'){
+                        a.classList.add('uploaded');
+                        const badge = document.createElement('span');
+                        badge.className = 'course-badge';
+                        badge.textContent = 'Added';
+                        a.appendChild(badge);
+                    }
+
                     // Optional thumbnail support
                     const thumb = c.thumbnail || c.image_url || c.icon || '';
                     if (thumb) {

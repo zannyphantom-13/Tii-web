@@ -387,6 +387,24 @@ main {
     transition: transform 0.25s cubic-bezier(.2,.9,.3,1), box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
+/* Highlight for uploaded / dynamically-added courses */
+.other-course-card.uploaded {
+    border-color: rgba(34, 153, 84, 0.28);
+    background: linear-gradient(180deg, #ffffff 0%, #fbfff9 50%, #f3fff6 100%);
+}
+
+.other-course-card .course-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: linear-gradient(90deg,#ffb74d,#ff8a65);
+    color: #fff;
+    padding: 6px 8px;
+    font-size: 12px;
+    border-radius: 999px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
 .other-course-card::before {
     content: '';
     position: absolute;
