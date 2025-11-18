@@ -37,14 +37,16 @@
     </header>
 
     <main>
-        <h2>Curriculum</h2>
-        <ul class="course-list">
-            <li><a class="course-button" href="courses/programming.html">Programming <i class="fa fa-arrow-right"></i></a></li>
-            <li><a class="course-button" href="courses/data-analysis.html">Data Analysis <i class="fa fa-arrow-right"></i></a></li>
-            <li><a class="course-button" href="courses/drug-discovery.html">Drug Discovery <i class="fa fa-arrow-right"></i></a></li>
-            <li><a class="course-button" href="courses/computational-chemistry.html">Computational Chemistry <i class="fa fa-arrow-right"></i></a></li>
-            <li><a class="course-button" href="courses/bioinformatics.html">Bioinformatics <i class="fa fa-arrow-right"></i></a></li>
-        </ul>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <h2 style="text-align: center; margin-bottom: 24px; color: #2a6e62;">Curriculum</h2>
+            <ul class="course-list" style="width: 100%; max-width: 500px; margin: 0 auto; text-align: center;">
+                <li><a class="course-button" style="justify-content: center;" href="courses/programming.html">Programming <i class="fa fa-arrow-right"></i></a></li>
+                <li><a class="course-button" style="justify-content: center;" href="courses/data-analysis.html">Data Analysis <i class="fa fa-arrow-right"></i></a></li>
+                <li><a class="course-button" style="justify-content: center;" href="courses/drug-discovery.html">Drug Discovery <i class="fa fa-arrow-right"></i></a></li>
+                <li><a class="course-button" style="justify-content: center;" href="courses/computational-chemistry.html">Computational Chemistry <i class="fa fa-arrow-right"></i></a></li>
+                <li><a class="course-button" style="justify-content: center;" href="courses/bioinformatics.html">Bioinformatics <i class="fa fa-arrow-right"></i></a></li>
+            </ul>
+        </div>
         <script>
         // Fetch persisted courses that have placement === 'curriculum' and append them
         (async function(){
