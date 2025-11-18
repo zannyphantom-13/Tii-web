@@ -1033,9 +1033,28 @@ app.get('/api/courses', async (req, res) => {
           const id = path.basename(f, '.html');
           if (data[id]) return; // already in DB
           const content = fs.readFileSync(path.join(COURSES_DIR, f), 'utf8');
-          // attempt to extract an H1 or <title> as title
-          let title = (content.match(/<h1[^>]*>([^<]*)<\/h1>/i) || content.match(/<title>([^<]*)<\/title>/i) || [null, id])[1] || id;
-          title = title.trim();
+          // attempt to extract a course-specific H1 (prefer H1 inside course-hero or with course-related class/id), then fallback to generic H1 or <title>
+          let title = id;
+          // 1) H1 with class/id containing 'course' (e.g., <h1 class="course-title">)
+          const h1CourseMatch = content.match(/<h1[^>]*(?:class=["'][^"'>]*course[^"'>]*["']|id=["'][^"'>]*course[^"'>]*["'])[^>]*>([\s\S]*?)<\/h1>/i);
+          if (h1CourseMatch && h1CourseMatch[1]) {
+            title = h1CourseMatch[1].replace(/<[^>]+>/g,'').trim();
+          } else {
+            // 2) H1 inside an element with class 'course-hero' (e.g., <div class="course-hero">...<h1>Title</h1>...)
+            const h1InHero = content.match(/<div[^>]*class=["'][^"'>]*course-hero[^"'>]*["'][^>]*>[\s\S]*?<h1[^>]*>([\s\S]*?)<\/h1>/i);
+            if (h1InHero && h1InHero[1]) {
+              title = h1InHero[1].replace(/<[^>]+>/g,'').trim();
+            } else {
+              // 3) generic first H1
+              const genericH1 = content.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+              if (genericH1 && genericH1[1]) title = genericH1[1].replace(/<[^>]+>/g,'').trim();
+              else {
+                // 4) fallback to <title>
+                const tmatch = content.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+                if (tmatch && tmatch[1]) title = tmatch[1].replace(/<[^>]+>/g,'').trim();
+              }
+            }
+          }
           // attempt to extract description from course-body or #course-description
           const descMatch = content.match(/<div[^>]*class="course-body"[^>]*>([\s\S]*?)<\/div>/i) || content.match(/<p[^>]*id="course-description"[^>]*>([\s\S]*?)<\/p>/i);
           let description = descMatch ? descMatch[1].replace(/<[^>]+>/g,'').trim() : '';
