@@ -122,6 +122,94 @@ def login():
 
 # --- ROUTES: ADMIN SPECIFIC ---
 
+# --- ROUTE: DELETE LESSON FROM COURSE ---
+import json
+
+@app.route('/api/courses/<course_id>/lessons/<lesson_id>', methods=['DELETE'])
+def delete_course_lesson(course_id, lesson_id):
+    db_path = os.path.join(BASE_DIR, '..', 'persistent-db.json')
+    try:
+        with open(db_path, 'r', encoding='utf-8') as f:
+            db = json.load(f)
+        lessons_key = f'courses/{course_id}/lessons'
+        if lessons_key in db and lesson_id in db[lessons_key]:
+            del db[lessons_key][lesson_id]
+            with open(db_path, 'w', encoding='utf-8') as f:
+                json.dump(db, f, indent=2)
+            return jsonify({'message': 'Lesson deleted.'}), 200
+        else:
+            return jsonify({'message': 'Lesson not found.'}), 404
+    except Exception as e:
+        return jsonify({'message': f'Error deleting lesson: {str(e)}'}), 500
+
+# --- ROUTE: ADD COURSE AND GENERATE HTML PAGE ---
+@app.route('/api/courses', methods=['POST'])
+def add_course():
+    data = request.get_json()
+    title = data.get('title')
+    description = data.get('description')
+    placement = data.get('placement', 'other')
+    if not title or not description:
+        return jsonify({'message': 'Missing title or description'}), 400
+    # Generate a unique course ID (slug)
+    course_id = title.lower().replace(' ', '-').replace('/', '-')
+    # Save course info to persistent-db.json or your DB (pseudo-code)
+    # ...existing DB save logic...
+    # Generate HTML file for the course
+    html_content = f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\">
+    <title>{title} - The Informatics Initiative</title>
+    <link rel=\"stylesheet\" href=\"/Tii/styles.css\">
+    <link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css\">
+</head>
+<body>
+    <header>...existing header...</header>
+    <main>
+        <div class=\"course-hero\">
+            <h1>{title}</h1>
+            <div class=\"course-meta\">{description}</div>
+            <div id=\"lessons\" class=\"lesson-list\">Loading lessons...</div>
+        </div>
+    </main>
+    <script>
+    (async function() {{
+        const COURSE_ID = '{course_id}';
+        const apiBase = window.location.origin || 'http://localhost:3000';
+        const rl = document.getElementById('lessons');
+        try {{
+            const res = await fetch(`${{apiBase}}/api/courses/${{COURSE_ID}}/lessons`);
+            if (!res.ok) return rl.innerHTML = '<p>Failed to load lessons.</p>';
+            const data = await res.json();
+            const lessons = data.lessons || [];
+            if (!lessons.length) return rl.innerHTML = '<p>No lessons yet.</p>';
+            rl.innerHTML = '';
+            lessons.forEach(ls => {{
+                const card = document.createElement('div');
+                card.className = 'lesson-card';
+                card.innerHTML = `<h3>${{ls.title}}</h3><div>${{ls.content||''}}</div>`;
+                rl.appendChild(card);
+            }});
+        }} catch(e) {{
+            rl.innerHTML = '<p>Error loading lessons.</p>';
+        }}
+    }})();
+    </script>
+</body>
+</html>
+"""
+    # Save the HTML file
+    course_html_path = os.path.join(BASE_DIR, '..', 'Tii', 'courses', f'{course_id}.html')
+    with open(course_html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    # Return the URL to the new course page
+    return jsonify({
+        'id': course_id,
+        'url': f'/Tii/courses/{course_id}.html',
+        'message': 'Course created and page generated.'
+    }), 201
+
 @app.route('/admin_login_check', methods=['POST'])
 def admin_login_check():
     """
