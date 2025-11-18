@@ -1568,3 +1568,46 @@ main {
         margin-right: 0;
     }
 }
+
+/* --- Course Page Styling (generated pages) --- */
+.course-hero {
+    max-width: 1000px;
+    margin: 32px auto;
+    background: #fff;
+    padding: 28px;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+}
+.course-hero h1 { color: #2a6e62; font-size: 2.1em; margin-bottom: 8px; }
+.course-meta { color: #2a6e62; margin-bottom: 12px; font-size: 0.98em; }
+.course-body { color: #444; font-size: 1.05em; line-height: 1.6; }
+.lesson-list { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+.lesson-card { background: #f9fffa; border: 1px solid #e6f4ef; border-radius: 8px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+.lesson-title { font-size: 1.15em; color: #1f5047; margin-bottom: 6px; font-weight: 600; }
+.lesson-meta { color: #666; font-size: 0.95em; margin-bottom: 8px; }
+.lesson-img { max-width: 320px; border-radius: 6px; border: 1px solid #eee; margin-top: 8px; display:block; }
+.lesson-resource { margin-top: 8px; display: inline-block; }
+.lesson-other { margin-top: 8px; color: #666; font-style: italic; }
+
+/* Fixed-course page selectors (chemistry, bioinformatics, etc.) */
+#course-description { 
+    max-width: 900px; 
+    margin: 12px auto 0 auto; 
+    color: #444; 
+    font-size: 1.05em; 
+    line-height: 1.6;
+}
+#course-actions { max-width:900px; margin:12px auto; }
+#course-actions .btn { display:inline-block; margin-right:8px; padding:10px 14px; background:#2a6e62; color:#fff; border-radius:6px; text-decoration:none }
+#course-actions .btn.secondary { background:#f3f6f5; color:#2a6e62; border:1px solid #e6f4ef }
+#lessons { max-width:900px; margin:18px auto; }
+#lessons .lesson-card { background:#f9fffa; border:1px solid #e6f4ef; padding:14px; border-radius:8px; margin-bottom:14px }
+#lessons .lesson-card h3 { margin:0 0 6px 0; color:#1f5047 }
+#lessons .lesson-card p { color:#444; margin:6px 0 }
+
+/* Generic small .btn helper used across some pages */
+.btn { display:inline-block; padding:10px 14px; border-radius:6px; text-decoration:none; background:#2a6e62; color:#fff }
+.btn:hover { opacity:0.95 }
+
+/* Hide any accidental "Add Course" button on public course pages */
+.add-course-btn, button.add-course, a.add-course { display: none !important; }
