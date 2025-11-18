@@ -71,6 +71,7 @@
     </main>
   <script>
     const API_URL = window.location.origin || 'http://localhost:3000';
+    let AVAILABLE_COURSES = [];
     async function loadCourses(){
       const sel = document.getElementById('course-select');
       sel.innerHTML = '<option>Loading...</option>';
@@ -98,6 +99,7 @@
         }
 
         sel.innerHTML = '';
+        AVAILABLE_COURSES = courses.slice();
         courses.forEach(c=>{
           const opt = document.createElement('option');
           opt.value = String(c.id || ''); // ensure value is always a string
@@ -194,9 +196,11 @@
           // show a link to the course page so admins can verify the new lesson
           const container = document.getElementById('upload-lesson-message');
           container.innerHTML = '';
-          const courseUrl = `/Tii/courses/${courseId}.html`;
-          const link = document.createElement('a');
-          link.href = courseUrl; link.target = '_blank'; link.textContent = 'View course page';
+            // Find the selected course object to get the authoritative URL (handles added courses)
+            const selected = (AVAILABLE_COURSES || []).find(ci => String(ci.id) === String(courseId));
+            const courseUrl = (selected && selected.url) ? selected.url : `/Tii/courses/${courseId}.html`;
+            const link = document.createElement('a');
+            link.href = courseUrl; link.target = '_blank'; link.textContent = 'View course page';
           link.className = 'explore-btn'; link.style.display = 'inline-block'; link.style.marginRight = '12px';
           container.appendChild(link);
           const openBtn = document.createElement('button');
