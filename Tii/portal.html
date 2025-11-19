@@ -7,11 +7,18 @@
     <link rel="stylesheet" href="styles.css"> 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script>
-        // IMMEDIATE AUTH CHECK (Client-side Page Protection)
-        if (!localStorage.getItem('authToken')) {
-            alert('You must be logged in to view this page.');
-            window.location.href = '/Tii/login.html';
-        }
+        // AUTH CHECK: run after DOM is ready so module scripts can initialize storage.
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (window.__tii_suppress_redirects) return;
+                if (!localStorage.getItem('authToken')) {
+                    // Preserve next so login can return the user to this page after auth
+                    const next = window.location.pathname + window.location.search;
+                    alert('You must be logged in to view this page.');
+                    window.location.href = `/Tii/login.html?next=${encodeURIComponent(next)}`;
+                }
+            } catch (e) { /* ignore in unusual environments */ }
+        });
     </script>
     <script src='user-loader.js'></script>
 </head>
