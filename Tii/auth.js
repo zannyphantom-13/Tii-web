@@ -33,8 +33,7 @@ export function setupPasswordToggles() {
     AUTH BUTTON HANDLER
 ============================================ */
 export function handleAuthButton() {
-    // Debug: report when handleAuthButton runs and whether a token exists
-    try { console.log('[auth] handleAuthButton running; tokenPresent=', !!localStorage.getItem('authToken')); } catch(e) {}
+    // (Debug log removed)
 
     const authButton = document.getElementById('auth-button');
     // If header hasn't been parsed yet, retry on DOMContentLoaded so pages that import
