@@ -1109,6 +1109,80 @@ app.get('/api/courses/:id/lessons', async (req, res) => {
   }
 });
 
+// COMMENTS API for lessons
+// GET /api/courses/:courseId/lessons/:lessonId/comments
+app.get('/api/courses/:courseId/lessons/:lessonId/comments', async (req, res) => {
+  try {
+    const courseId = req.params.courseId;
+    const lessonId = req.params.lessonId;
+    const snap = await db.ref(`courses/${courseId}/lessons/${lessonId}/comments`).get();
+    const data = snapshotVal(snap) || {};
+    // Build nested replies structure
+    const nodes = {};
+    Object.keys(data).forEach(k => {
+      const item = data[k] || {};
+      nodes[k] = { id: k, text: item.text || '', author: item.author || 'Anonymous', role: item.role || 'student', parent: item.parent || null, created_at: item.created_at || null, replies: [] };
+    });
+    const roots = [];
+    Object.keys(nodes).forEach(k => {
+      const n = nodes[k];
+      if (n.parent && nodes[n.parent]) {
+        nodes[n.parent].replies.push(n);
+      } else {
+        roots.push(n);
+      }
+    });
+    function sortNodes(arr) {
+      arr.sort((a,b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+      arr.forEach(n => { if (n.replies && n.replies.length) sortNodes(n.replies); });
+    }
+    sortNodes(roots);
+    res.json({ comments: roots });
+  } catch (e) {
+    console.error('Fetch comments error:', e);
+    res.status(500).json({ message: 'Server error fetching comments.' });
+  }
+});
+
+// POST /api/courses/:courseId/lessons/:lessonId/comments
+app.post('/api/courses/:courseId/lessons/:lessonId/comments', async (req, res) => {
+  try {
+    const courseId = req.params.courseId;
+    const lessonId = req.params.lessonId;
+    const { text, parentId } = req.body;
+    if (!text || String(text).trim() === '') return res.status(400).json({ message: 'Comment text is required.' });
+
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    let author = 'Anonymous';
+    let role = 'student';
+    if (token) {
+      try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        author = payload.email || author;
+        role = payload.role || role;
+      } catch (e) {
+        // invalid token -> keep guest identity
+      }
+    }
+
+    const id = `cmt_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const comment = {
+      text: String(text),
+      author,
+      role,
+      parent: parentId || null,
+      created_at: new Date().toISOString()
+    };
+
+    await db.ref(`courses/${courseId}/lessons/${lessonId}/comments/${id}`).set(comment);
+    res.status(201).json({ id, ...comment });
+  } catch (e) {
+    console.error('Create comment error:', e);
+    res.status(500).json({ message: 'Server error creating comment.' });
+  }
+});
+
 // POST /api/courses/:id/lessons  (admin only)
 app.post('/api/courses/:id/lessons', async (req, res) => {
   try {
@@ -1481,9 +1555,12 @@ async function generateCoursePage(id, course) {
           const preview = esc(ls.other_info) || (ls.content ? (esc(ls.content).length > 140 ? esc(ls.content).slice(0,140) + '...' : esc(ls.content)) : '');
 
           let details = '';
-          if (ls.image_url) details += `<img src="${esc(ls.image_url)}" alt="${esc(ls.title)}" class="lesson-img"/>`;
+          if (ls.image_url) details += `<a href="${esc(ls.image_url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(ls.image_url)}" alt="${esc(ls.title)}" class="lesson-img"/></a>`;
           if (ls.resource_url) details += `<a class="lesson-resource explore-btn-secondary" target="_blank" href="${esc(ls.resource_url)}">Open Resource</a>`;
           details += `<div style="margin-top:8px">${(ls.content || '').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}</div>`;
+
+          // Comments section placeholder (client will fetch/post comments)
+          details += `\n<div class="comments-section" id="comments_${esc(ls.id)}" data-lesson-id="${esc(ls.id)}">\n  <h4>Comments</h4>\n  <div class="comments-list">Loading comments...</div>\n  <form class="comment-form" data-lesson="${esc(ls.id)}">\n    <div style="margin-top:8px">\n      <textarea name="text" placeholder="Write a comment..." required style="width:100%;min-height:80px;padding:8px;border:1px solid #ccc;border-radius:6px"></textarea>\n    </div>\n    <div style="margin-top:8px">\n      <button type="submit" class="btn">Post Comment</button>\n    </div>\n  </form>\n</div>`;
 
           lessonsHtml += `<div class="lesson-card">
   <button type="button" class="lesson-summary-btn btn" aria-expanded="false">${esc(ls.title || 'Untitled')}</button>
@@ -1544,6 +1621,92 @@ async function generateCoursePage(id, course) {
       });
 
       const COURSE_ID = '${id}';
+      const apiBase = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : 'http://localhost:3000';
+
+      // Helper to escape strings for insertion into DOM
+      function escapeHtml(str){ if (str === null || str === undefined) return ''; return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+      async function loadComments(lessonId){
+        const container = document.getElementById('comments_' + lessonId);
+        if (!container) return;
+        const listEl = container.querySelector('.comments-list');
+        listEl.innerHTML = 'Loading comments...';
+        try{
+          const res = await fetch(apiBase + '/api/courses/' + COURSE_ID + '/lessons/' + lessonId + '/comments');
+          if (!res.ok) { listEl.innerHTML = '<p>Failed to load comments.</p>'; return; }
+          const data = await res.json();
+          renderComments(listEl, data.comments || []);
+        } catch(e){ console.error(e); listEl.innerHTML = '<p>Error loading comments.</p>'; }
+      }
+
+      function renderComments(container, comments){
+        container.innerHTML = '';
+        if (!comments || !comments.length) { container.innerHTML = '<p>No comments yet.</p>'; return; }
+        comments.forEach(c => {
+          const node = document.createElement('div');
+          node.className = 'comment';
+          node.innerHTML = '<div class="comment-meta"><strong>' + escapeHtml(c.author) + '</strong> <span class="comment-role">' + escapeHtml(c.role) + '</span> <span class="comment-time">' + escapeHtml(c.created_at || '') + '</span></div>' +
+                           '<div class="comment-text">' + escapeHtml(c.text) + '</div>';
+          // replies
+          if (c.replies && c.replies.length) {
+            const repliesWrap = document.createElement('div'); repliesWrap.className = 'comment-replies';
+            c.replies.forEach(r => {
+              const rn = document.createElement('div'); rn.className = 'comment reply';
+              rn.innerHTML = '<div class="comment-meta"><strong>' + escapeHtml(r.author) + '</strong> <span class="comment-role">' + escapeHtml(r.role) + '</span> <span class="comment-time">' + escapeHtml(r.created_at || '') + '</span></div>' + '<div class="comment-text">' + escapeHtml(r.text) + '</div>';
+              repliesWrap.appendChild(rn);
+            });
+            node.appendChild(repliesWrap);
+          }
+          // reply button
+          const replyBtn = document.createElement('button'); replyBtn.className = 'mini-cta'; replyBtn.textContent = 'Reply';
+          replyBtn.style.marginTop = '8px';
+          replyBtn.addEventListener('click', ()=>{
+            let form = node.querySelector('.reply-form');
+            if (form) { form.style.display = form.style.display === 'none' ? 'block' : 'none'; return; }
+            form = document.createElement('form'); form.className = 'reply-form';
+            form.innerHTML = '<div style="margin-top:8px"><textarea name="text" required style="width:100%;min-height:60px;padding:8px;border:1px solid #ccc;border-radius:6px"></textarea></div><div style="margin-top:8px"><button class="btn" type="submit">Post Reply</button></div>';
+            form.addEventListener('submit', async (ev) => {
+              ev.preventDefault();
+              const ta = form.querySelector('textarea');
+              const text = ta.value.trim(); if (!text) return;
+              const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+              try{
+                const hdrs = { 'Content-Type': 'application/json' };
+                if (token) hdrs['Authorization'] = 'Bearer ' + token;
+                const resp = await fetch(apiBase + '/api/courses/' + COURSE_ID + '/lessons/' + (container.closest('.comments-section') ? container.closest('.comments-section').dataset.lessonId : '') + '/comments', { method: 'POST', headers: hdrs, body: JSON.stringify({ text: text, parentId: c.id }) });
+                if (resp.ok) { ta.value = ''; loadComments(container.dataset.lessonId || container.id.replace('comments_','')); }
+                else { alert('Failed to post reply'); }
+              }catch(err){ console.error(err); alert('Error posting reply'); }
+            });
+            node.appendChild(form);
+          });
+          node.appendChild(replyBtn);
+          container.appendChild(node);
+        });
+      }
+
+      // Initialize comments for each lesson and wire up forms
+      document.querySelectorAll('.comments-section').forEach(sec => {
+        const lessonId = sec.dataset.lessonId;
+        loadComments(lessonId);
+        const form = sec.querySelector('.comment-form');
+        if (form) {
+          form.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const ta = form.querySelector('textarea[name="text"]');
+            const text = ta && ta.value.trim(); if (!text) return;
+            const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+            try{
+              const hdrs = { 'Content-Type': 'application/json' };
+              if (token) hdrs['Authorization'] = 'Bearer ' + token;
+              const resp = await fetch(apiBase + '/api/courses/' + COURSE_ID + '/lessons/' + lessonId + '/comments', { method: 'POST', headers: hdrs, body: JSON.stringify({ text }) });
+              if (resp.ok){ ta.value = ''; loadComments(lessonId); }
+              else { alert('Failed to post comment'); }
+            } catch(err){ console.error(err); alert('Error posting comment'); }
+          });
+        }
+      });
+
       const token = localStorage.getItem('token') || localStorage.getItem('authToken');
       if(token){
         const actions = document.getElementById('course-actions');
