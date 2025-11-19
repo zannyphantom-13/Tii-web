@@ -1489,28 +1489,76 @@ async function generateCoursePage(id, course) {
   <script>
   (async function(){
     const COURSE_ID = '${id}';
-    const apiBase = '';
+    const apiBase = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : 'http://localhost:3000';
     const rl = document.getElementById('lessons');
-    const actions = document.getElementById('course-actions');
-    try{
-      const res = await fetch('/api/courses/' + COURSE_ID + '/lessons');
-      if(!res.ok) return rl.innerHTML = '<p>Failed to load lessons.</p>';
-      const data = await res.json();
-      const list = data.lessons || data;
-      if(!list || !list.length) { rl.innerHTML = '<p>No lessons yet.</p>'; }
-      else {
-        rl.innerHTML = '';
-        list.forEach(ls => {
-          const card = document.createElement('div');
-          card.className = 'lesson-card';
-          card.innerHTML = '<h3 class="lesson-title">' + (ls.title || '') + '</h3><div class="lesson-meta">' + (ls.topic || '') + '</div><div>' + (ls.content || '') + '</div>';
-          rl.appendChild(card);
-        });
-      }
-    }catch(e){ rl.innerHTML = '<p>Error loading lessons.</p>'; console.error(e) }
 
-    const token = localStorage.getItem('authToken');
-    if(token && actions) actions.innerHTML = '<a class="btn" href="/Tii/upload-lesson.html?course=' + COURSE_ID + '">Add Lesson</a>';
+    function renderLessons(list){
+      if(!list || !list.length){ rl.innerHTML = '<p>No lessons yet.</p>'; return; }
+      rl.innerHTML = '';
+      list.forEach(ls => {
+        const card = document.createElement('div');
+        card.className = 'lesson-card';
+
+        const summaryBtn = document.createElement('button');
+        summaryBtn.type = 'button';
+        summaryBtn.className = 'lesson-summary-btn btn';
+        summaryBtn.setAttribute('aria-expanded','false');
+        summaryBtn.textContent = ls.title || 'Untitled';
+
+        const meta = document.createElement('div');
+        meta.className = 'lesson-meta';
+        const metaParts = [];
+        if (ls.topic) metaParts.push('Topic: ' + ls.topic);
+        if (ls.weeks) metaParts.push('Weeks: ' + ls.weeks);
+        if (ls.date) metaParts.push('Date: ' + ls.date);
+        meta.textContent = metaParts.join(' | ');
+
+        const preview = document.createElement('div');
+        preview.className = 'lesson-preview';
+        preview.style.color = '#666';
+        preview.style.marginTop = '8px';
+        preview.textContent = ls.other_info || (ls.content ? (ls.content.length > 140 ? ls.content.slice(0,140) + '...' : ls.content) : '');
+
+        const details = document.createElement('div');
+        details.className = 'lesson-details';
+        details.style.display = 'none';
+        if (ls.image_url) {
+          const img = document.createElement('img'); img.src = ls.image_url; img.alt = ls.title || ''; img.className = 'lesson-img'; details.appendChild(img);
+        }
+        if (ls.resource_url) {
+          const a = document.createElement('a'); a.href = ls.resource_url; a.target = '_blank'; a.className = 'lesson-resource explore-btn-secondary'; a.textContent = 'Open Resource'; details.appendChild(a);
+        }
+        const fullContent = document.createElement('div'); fullContent.style.marginTop='8px'; fullContent.innerHTML = (ls.content || '').replace(/\n/g,'<br/>'); details.appendChild(fullContent);
+
+        summaryBtn.addEventListener('click', ()=>{
+          const expanded = summaryBtn.getAttribute('aria-expanded') === 'true';
+          summaryBtn.setAttribute('aria-expanded', String(!expanded));
+          details.style.display = expanded ? 'none' : 'block';
+        });
+
+        card.appendChild(summaryBtn);
+        card.appendChild(meta);
+        card.appendChild(preview);
+        card.appendChild(details);
+        rl.appendChild(card);
+      });
+    }
+
+    try{
+      const res = await fetch(apiBase + '/api/courses/' + COURSE_ID + '/lessons');
+      if(res.ok){
+        const data = await res.json();
+        renderLessons(data.lessons || data);
+      } else {
+        rl.innerHTML = '<p>Failed to load lessons.</p>';
+      }
+    }catch(e){ rl.innerHTML = '<p>Error loading lessons.</p>'; console.error(e); }
+
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+    if(token){
+      const actions = document.getElementById('course-actions');
+      if(actions) actions.innerHTML = '<a class="btn" href="/Tii/upload-lesson.html?course=' + COURSE_ID + '">Add Lesson</a>';
+    }
   })();
   </script>
 
