@@ -7,7 +7,25 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header><a href="admin-portal.html">← Back to Admin</a></header>
+  <header><a href="/Tii/admin-portal.html">← Back to Admin</a></header>
+  <script>
+    // Guard this page: show form only to admins. Non-admins see a friendly message.
+    (function(){
+      function parseJwt(token){
+        try{ const p = token.split('.')[1]; return JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/'))); }catch(e){return null}
+      }
+      const token = localStorage.getItem('authToken');
+      const payload = token ? parseJwt(token) : null;
+      if (!payload || payload.role !== 'admin'){
+        document.addEventListener('DOMContentLoaded', ()=>{
+          const main = document.querySelector('main');
+          if (main){
+            main.innerHTML = '<div style="max-width:900px;margin:24px auto;text-align:center;color:#333"><h2>Upload Restricted</h2><p>Lesson uploads are restricted to administrators. <a href="/Tii/admin-login.html">Admin login</a> or visit the <a href="/Tii/portal.html">Portal</a>.</p></div>';
+          }
+        });
+      }
+    })();
+  </script>
     <main style="max-width:900px;margin:24px auto;display:grid;grid-template-columns:1fr 420px;gap:20px;align-items:start;">
     <section>
       <h2>Upload New Lesson</h2>
