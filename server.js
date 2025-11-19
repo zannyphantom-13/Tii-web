@@ -1939,6 +1939,7 @@ async function generateCoursePage(id, course) {
   <title>${safeTitle} — The Informatics Initiative</title>
   <link rel="stylesheet" href="/Tii/styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link rel="stylesheet" href="/Tii/styles/comments-tiktok.css">
 </head>
 <body>
   <header>
@@ -2165,6 +2166,7 @@ async function generateCoursePage(id, course) {
     import { handleAuthButton, updatePortalLink } from '/Tii/auth.js';
     updatePortalLink(); handleAuthButton();
   </script>
+  <script src="/Tii/js/comments-tiktok.js" defer></script>
 </body>
 </html>`;
 

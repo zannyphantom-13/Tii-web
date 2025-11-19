@@ -1,0 +1,153 @@
+/* TikTok-style comments UI module
+   - Replaces existing comments list inside `.comments-section` elements
+   - Uses existing API endpoints: GET /api/courses/:course/lessons/:lesson/comments
+   - POST to create, DELETE to remove (supports anonymous deletion token via x-deletion-token)
+   - Subscribes to SSE /api/comments/stream?courseId=... to refresh on events
+*/
+(function(){
+  'use strict';
+  const COURSE_ID = (window.COURSE_ID || window.location.pathname.split('/').pop().replace('.html','')) || null;
+  if (!COURSE_ID) return; // nothing to do
+
+  // Helpers
+  const apiBase = '';
+  function el(tag, props, ...children){ const e = document.createElement(tag); if(props) Object.keys(props).forEach(k=>{ if(k==='class') e.className=props[k]; else if(k==='html') e.innerHTML=props[k]; else e.setAttribute(k,props[k]); }); children.forEach(c=>{ if(c===null || c===undefined) return; e.appendChild(typeof c==='string'?document.createTextNode(c):c); }); return e; }
+  function fmtTime(ts){ try{ if(!ts) return ''; const d = new Date(ts); const ago = Date.now()-d.getTime(); if(ago<60000) return Math.floor(ago/1000)+'s'; if(ago<3600000) return Math.floor(ago/60000)+'m'; if(ago<86400000) return Math.floor(ago/3600000)+'h'; return d.toLocaleDateString(); }catch(e){return ''} }
+  function initials(name){ if(!name) return '?'; return name.split(/\s+/).map(s=>s[0]||'').slice(0,2).join('').toUpperCase(); }
+
+  // Render a single comments-section into a TikTok-style UI
+  async function enhanceSection(sec){
+    const lessonId = sec.dataset.lessonId;
+    if(!lessonId) return;
+    sec.classList.add('tt-comments-root');
+    // create UI shell
+    const listWrap = el('div',{class:'tt-comments-list'});
+    const inputBar = el('div',{class:'tt-input-bar'});
+    const textarea = el('textarea',{class:'tt-input', placeholder:'Add a comment...'});
+    textarea.style.resize='vertical'; textarea.style.minHeight='44px';
+    const postBtn = el('button',{class:'tt-post'}, 'Post');
+    inputBar.appendChild(textarea); inputBar.appendChild(postBtn);
+
+    // replace existing list area if present
+    const existingList = sec.querySelector('.comments-list');
+    if (existingList) existingList.replaceWith(listWrap);
+    else sec.appendChild(listWrap);
+    // move form to inputBar (hide old form)
+    const oldForm = sec.querySelector('.comment-form'); if(oldForm) oldForm.style.display='none';
+    sec.appendChild(inputBar);
+
+    // load and render
+    async function loadComments(){
+      listWrap.innerHTML = '';
+      listWrap.appendChild(el('div',{class:'tt-empty'}, 'Loading comments...'));
+      try{
+        const res = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments`);
+        if(!res.ok) { listWrap.innerHTML = ''; listWrap.appendChild(el('div',{class:'tt-empty'}, 'Failed to load comments')); return; }
+        const jb = await res.json(); const comments = jb.comments || [];
+        if(!comments.length){ listWrap.innerHTML=''; listWrap.appendChild(el('div',{class:'tt-empty'}, 'No comments yet — be the first.')); return; }
+        listWrap.innerHTML='';
+        comments.forEach(c=>{ listWrap.appendChild(renderComment(c, lessonId)); });
+      }catch(e){ console.error('loadComments',e); listWrap.innerHTML=''; listWrap.appendChild(el('div',{class:'tt-empty'}, 'Error loading comments')); }
+    }
+
+    function renderComment(c, lessonId){
+      const box = el('div',{class:'tt-comment'});
+      if(c && c.id) box.dataset.commentId = c.id;
+      const av = el('div',{class:'tt-avatar'}, initials(c.author));
+      const body = el('div',{class:'tt-body'});
+      const meta = el('div',{class:'tt-meta'});
+      meta.appendChild(el('span',{class:'tt-author'}, c.author));
+      if(c.role) meta.appendChild(el('span',{class:'tt-role'}, ' • '+c.role));
+      meta.appendChild(el('span',{class:'tt-time'}, fmtTime(c.created_ts||c.created_at)));
+      body.appendChild(meta);
+      body.appendChild(el('div',{class:'tt-text'}, c.text));
+
+      // actions: like, reply, delete
+      const actions = el('div',{class:'tt-actions'});
+      const likeBtn = el('button',{class:'tt-btn tt-like'}, `♥ ${getLikeCount(c.id)}`);
+      likeBtn.addEventListener('click', ()=>{ toggleLike(c.id); likeBtn.textContent = `♥ ${getLikeCount(c.id)}`; });
+      actions.appendChild(likeBtn);
+
+      const replyBtn = el('button',{class:'tt-btn'}, 'Reply');
+      actions.appendChild(replyBtn);
+
+      const canDelete = canCurrentUserDelete(c);
+      if(canDelete){ const del = el('button',{class:'tt-btn'}, 'Delete'); del.addEventListener('click', async ()=>{ if(!confirm('Delete comment?')) return; await deleteComment(lessonId,c.id); loadComments(); }); actions.appendChild(del); }
+
+      body.appendChild(actions);
+
+      // replies
+      if(c.replies && c.replies.length){ const repWrap = el('div',{class:'tt-replies'}); c.replies.forEach(r=>repWrap.appendChild(renderReply(r, lessonId, c))); body.appendChild(repWrap); }
+
+      // reply form (hidden)
+      const replyForm = el('form',{class:'tt-reply-form', style:'display:none;margin-top:8px'});
+      const rta = el('textarea',{class:'tt-input', placeholder:'Reply...'}); rta.style.minHeight='40px';
+      const rpost = el('button',{class:'tt-post'}, 'Reply');
+      replyForm.appendChild(rta); replyForm.appendChild(rpost);
+      replyForm.addEventListener('submit', async (ev)=>{ ev.preventDefault(); const t = rta.value.trim(); if(!t) return; await postComment(lessonId,t,c.id); rta.value=''; replyForm.style.display='none'; loadComments(); });
+      replyBtn.addEventListener('click', ()=>{ replyForm.style.display = replyForm.style.display==='none'?'block':'none'; });
+      body.appendChild(replyForm);
+
+      box.appendChild(av); box.appendChild(body);
+      return box;
+    }
+
+    function renderReply(r, lessonId, parent){ const box = el('div',{class:'tt-reply'}); box.appendChild(el('div',{class:'tt-meta'}, el('strong',null,r.author), ' ', el('span',{class:'tt-time'}, fmtTime(r.created_ts||r.created_at)))); box.appendChild(el('div',{class:'tt-text'}, '@'+(r.reply_to_name||'' )+' '+ r.text)); return box; }
+
+    // Likes stored locally
+    function getLikeKey(){ return `c_likes_${COURSE_ID}`; }
+    function getLikes(){ try{ return JSON.parse(localStorage.getItem(getLikeKey())||'{}'); }catch(e){return{}} }
+    function getLikeCount(id){ const likes = getLikes(); return likes[id]||0; }
+    function toggleLike(id){ const likes = getLikes(); likes[id] = likes[id] ? 0 : 1; localStorage.setItem(getLikeKey(), JSON.stringify(likes)); }
+
+    function canCurrentUserDelete(c){ try{ const token = localStorage.getItem('token') || localStorage.getItem('authToken'); if(token){ const p = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); if(p && p.email && c.author && p.email===c.author) return true; } const anon = localStorage.getItem('c_del_'+c.id); if(anon) return true; return false; }catch(e){return false} }
+
+    async function postComment(lessonId, text, parentId){
+      try{
+        const headers = {'Content-Type':'application/json'};
+        const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+        if(token) headers['Authorization'] = 'Bearer '+token;
+        const body = { text };
+        if(parentId) body.parentId = parentId;
+        const r = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments`, { method:'POST', headers, body: JSON.stringify(body) });
+        const jb = await r.json().catch(()=>null);
+        if(r.ok && jb && jb.deletion_token && jb.id) localStorage.setItem('c_del_'+jb.id, jb.deletion_token);
+        return jb;
+      } catch(e){ console.error('postComment',e); }
+    }
+
+    async function deleteComment(lessonId, commentId){ try{ const headers = {}; const token = localStorage.getItem('token') || localStorage.getItem('authToken'); if(token) headers['Authorization'] = 'Bearer '+token; else { const tok = localStorage.getItem('c_del_'+commentId); if(tok) headers['x-deletion-token'] = tok; } const r = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments/${encodeURIComponent(commentId)}`, { method:'DELETE', headers }); if(r.ok) { localStorage.removeItem('c_del_'+commentId); return true; } const jb = await r.json().catch(()=>null); console.warn('delete failed', jb); return false; }catch(e){console.error('deleteComment',e);return false} }
+
+    // bind post button
+    postBtn.addEventListener('click', async ()=>{
+      const t = textarea.value.trim(); if(!t) return; postBtn.disabled = true;
+      const jb = await postComment(lessonId,t);
+      textarea.value='';
+      // if server returned id, reload and highlight new comment
+      await loadComments();
+      try{
+        if(jb && jb.id){
+          const elNew = listWrap.querySelector(`[data-comment-id="${jb.id}"]`);
+          if(elNew){ elNew.classList.add('tt-new'); setTimeout(()=>elNew.classList.remove('tt-new'), 900); elNew.scrollIntoView({behavior:'smooth',block:'center'}); }
+        }
+      }catch(e){}
+      postBtn.disabled = false;
+    });
+
+    // SSE: subscribe to course-level stream and refresh on matching lessonId
+    try{
+      const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+      const url = `/api/comments/stream?courseId=${encodeURIComponent(COURSE_ID)}` + (token? `&token=${encodeURIComponent(token)}`:'');
+      const es = new EventSource(url);
+      es.onmessage = function(ev){ try{ const p = JSON.parse(ev.data||'{}'); if(!p || p.type!=='comment') return; if(p.lessonId && p.lessonId===lessonId) loadComments(); if(!p.lessonId) loadComments(); }catch(e){} };
+      es.onerror = ()=>{ try{ es.close(); }catch(e){} };
+    }catch(e){ /* ignore */ }
+
+    // initial load
+    await loadComments();
+  }
+
+  // find all comment sections and enhance them
+  document.addEventListener('DOMContentLoaded', ()=>{ document.querySelectorAll('.comments-section').forEach(s=>{ try{ enhanceSection(s); }catch(e){console.error('enhanceSection',e)} }); });
+
+})();
