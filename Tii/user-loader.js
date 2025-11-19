@@ -13,6 +13,18 @@ try {
     console.log('[user-loader] isLoggedIn=', !!isLoggedIn, 'userRole=', userRole, 'currentPage=', currentPage);
 } catch (e) { /* ignore in constrained environments */ }
 
+// Reload-guard: detect repeated loads of the same page and suppress redirects
+try {
+    const guardKey = 'tii_reload_count_' + currentPage;
+    const prev = sessionStorage.getItem(guardKey);
+    const count = prev ? (parseInt(prev, 10) + 1) : 1;
+    sessionStorage.setItem(guardKey, String(count));
+    if (count > 3) {
+        console.warn(`[user-loader] detected reload loop on ${currentPage} (count=${count}). Suppressing redirects.`);
+        window.__tii_suppress_redirects = true;
+    }
+} catch (e) { /* ignore */ }
+
 // Pages that should be inaccessible AFTER login
 const loginPages = ["login.html", "register.html", "admin-login.html"];
 
