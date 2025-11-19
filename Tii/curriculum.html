@@ -163,9 +163,19 @@
                         // For uploaded/generated courses we do NOT add a second Manage button here.
                         // The primary 'Open' button above is used to navigate to the course HTML.
                     }
+                    // attach actions and return the card element
+                    a.appendChild(actionsWrap);
+                    return a;
+                }
                 // Filter courses and render them; exclude admin/system placeholder titles
+                function placementIsCurriculum(p){
+                    if (!p && p !== 0) return true; // treat missing placement as curriculum-friendly
+                    const v = String(p).trim().toLowerCase();
+                    return v === 'curriculum' || v === 'list' || v === 'display as list' || v.indexOf('curr') !== -1;
+                }
+
                 data.courses
-                    .filter(c => c.placement === 'curriculum' && c.title && c.title.trim() !== '' )
+                    .filter(c => placementIsCurriculum(c.placement) && c.title && c.title.trim() !== '' )
                     .filter(c => !['the informatics initiative','biology'].includes((c.title||'').trim().toLowerCase()))
                     .forEach(c => {
                         // avoid duplicates by title
