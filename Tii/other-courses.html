@@ -59,9 +59,11 @@
             data.courses
                 .filter(c => c.placement === 'other' && c.title && c.title.trim() !== '' && c.title.trim().toLowerCase() !== 'the informatics initiative')
                 .forEach(c => {
+                    const isUploaded = (c.id && String(c.id).startsWith('c_')) || (c.created_by && String(c.created_by).toLowerCase() !== 'static');
                     const card = document.createElement('div');
-                    card.className = 'other-course-card';
+                    card.className = 'other-course-card' + (isUploaded ? ' uploaded' : '');
                     card.innerHTML = `
+                        ${isUploaded ? '<div class="course-badge">Added</div>' : ''}
                         ${c.image ? `<img src="${c.image}" alt="${c.title}"/>` : ''}
                         <h4 title="${c.title}">${c.title}</h4>
                         <p title="${c.description}">${c.description}</p>
