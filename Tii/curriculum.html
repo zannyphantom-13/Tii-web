@@ -131,15 +131,14 @@
                     actionsWrap.style.alignItems = 'center';
                     actionsWrap.style.marginTop = '12px';
 
-                    const openBtn = document.createElement('a');
-                    openBtn.className = 'explore-btn-secondary';
-                    openBtn.href = c.url || `courses/${c.id}.html`;
-                    openBtn.target = '_blank';
-                    openBtn.textContent = 'Open';
-                    openBtn.style.display = 'inline-block';
-                    openBtn.style.width = 'auto';
-                    openBtn.style.padding = '8px 14px';
-                    actionsWrap.appendChild(openBtn);
+                        // uploaded/generated course: show single Open button that navigates to the course page
+                        const openBtn = document.createElement('a');
+                        openBtn.className = 'mini-cta manage-inline';
+                        openBtn.textContent = 'Open';
+                        // Prefer authoritative course.url if provided, else fallback to generated path
+                        openBtn.href = c.url && c.url.trim() ? c.url : (`/Tii/courses/${encodeURIComponent(c.id)}.html`);
+                        openBtn.target = '_blank';
+                        actionsWrap.appendChild(openBtn);
 
                     // Admin-only actions for uploaded courses: visible when auth token exists
                     const token = localStorage.getItem('authToken');
