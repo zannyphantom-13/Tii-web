@@ -8,6 +8,11 @@ const isLoggedIn = !!authToken;
 // Determine the current page for checks
 const currentPage = window.location.pathname.split("/").pop() || "index.html"; 
 
+// Debug: log auth state and current page (no secrets)
+try {
+    console.log('[user-loader] isLoggedIn=', !!isLoggedIn, 'userRole=', userRole, 'currentPage=', currentPage);
+} catch (e) { /* ignore in constrained environments */ }
+
 // Pages that should be inaccessible AFTER login
 const loginPages = ["login.html", "register.html", "admin-login.html"];
 
