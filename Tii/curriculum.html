@@ -157,13 +157,6 @@
                             manageBtn.textContent = 'Manage';
                             manageBtn.href = '/Tii/admin-portal.html?edit_course=' + encodeURIComponent(c.id);
                             actionsWrap.appendChild(manageBtn);
-                        } else {
-                            // uploaded/generated course: show single Manage button only
-                            const manageOnly = document.createElement('a');
-                            manageOnly.className = 'mini-cta manage-inline';
-                            manageOnly.textContent = 'Manage';
-                            manageOnly.href = '/Tii/admin-portal.html?edit_course=' + encodeURIComponent(c.id);
-                            actionsWrap.appendChild(manageOnly);
                         }
                     }
 
