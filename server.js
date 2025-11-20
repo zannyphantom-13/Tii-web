@@ -52,13 +52,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/Tii', async (req, res, next) => {
   try {
     const protectedFiles = [
-      '/admin-profile.html',
-      '/ad-manager.html',
-      '/ad-upload.html',
-      '/upload-course.html',
-      '/upload-lesson.html',
-      '/profile.html',
-      '/assignments.html'
+    
     ];
     const reqPath = req.path || '';
     // Check whether this request targets a protected filename
