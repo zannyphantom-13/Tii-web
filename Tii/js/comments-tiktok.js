@@ -72,7 +72,7 @@
       actions.appendChild(replyBtn);
 
       const canDelete = canCurrentUserDelete(c);
-      if(canDelete){ const del = el('button',{class:'tt-btn'}, 'Delete'); del.addEventListener('click', async ()=>{ if(!confirm('Delete comment?')) return; await deleteComment(lessonId,c.id); loadComments(); }); actions.appendChild(del); }
+      if(canDelete){ const del = el('button',{class:'tt-btn tt-delete'}, 'Delete'); del.addEventListener('click', async ()=>{ if(!confirm('Delete comment?')) return; await deleteComment(lessonId,c.id); loadComments(); }); actions.appendChild(del); }
 
       body.appendChild(actions);
 
@@ -92,7 +92,30 @@
       return box;
     }
 
-    function renderReply(r, lessonId, parent){ const box = el('div',{class:'tt-reply'}); box.appendChild(el('div',{class:'tt-meta'}, el('strong',null,r.author), ' ', el('span',{class:'tt-time'}, fmtTime(r.created_ts||r.created_at)))); box.appendChild(el('div',{class:'tt-text'}, '@'+(r.reply_to_name||'' )+' '+ r.text)); return box; }
+    function renderReply(r, lessonId, parent){
+      const box = el('div',{class:'tt-reply'});
+      // show chain like: replier > target
+      const target = r.reply_to_name || parent && parent.author || '';
+      const chain = target ? `${r.author} > ${target}` : r.author;
+      box.appendChild(el('div',{class:'tt-meta'}, el('strong',null,chain), ' ', el('span',{class:'tt-time'}, fmtTime(r.created_ts||r.created_at))));
+      box.appendChild(el('div',{class:'tt-text'}, r.text));
+
+      // allow replying to a reply (nested reply)
+      const replyActions = el('div',{class:'tt-reply-actions'});
+      const replyBtn = el('button',{class:'tt-btn tt-reply-small'}, 'Reply');
+      replyActions.appendChild(replyBtn);
+      // small inline reply form
+      const inlineForm = el('form',{class:'tt-reply-inline', style:'display:none;margin-top:8px'});
+      const inlineTa = el('textarea',{class:'tt-input', placeholder:'Reply...'});
+      inlineTa.style.minHeight='38px';
+      const inlinePost = el('button',{class:'tt-post'}, 'Reply');
+      inlineForm.appendChild(inlineTa); inlineForm.appendChild(inlinePost);
+      inlineForm.addEventListener('submit', async (ev)=>{ ev.preventDefault(); const t = inlineTa.value.trim(); if(!t) return; // when replying to a reply we keep parentId as parent.id (top-level)
+        await postComment(lessonId, t, parent.id, { reply_to_id: r.id, reply_to_name: r.author }); inlineTa.value=''; inlineForm.style.display='none'; await loadComments(); });
+      replyBtn.addEventListener('click', ()=>{ inlineForm.style.display = inlineForm.style.display==='none' ? 'block' : 'none'; });
+      box.appendChild(replyActions); box.appendChild(inlineForm);
+      return box;
+    }
 
     // Likes stored locally
     function getLikeKey(){ return `c_likes_${COURSE_ID}`; }
@@ -100,15 +123,35 @@
     function getLikeCount(id){ const likes = getLikes(); return likes[id]||0; }
     function toggleLike(id){ const likes = getLikes(); likes[id] = likes[id] ? 0 : 1; localStorage.setItem(getLikeKey(), JSON.stringify(likes)); }
 
-    function canCurrentUserDelete(c){ try{ const token = localStorage.getItem('token') || localStorage.getItem('authToken'); if(token){ const p = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); if(p && p.email && c.author && p.email===c.author) return true; } const anon = localStorage.getItem('c_del_'+c.id); if(anon) return true; return false; }catch(e){return false} }
+    function canCurrentUserDelete(c){
+      try{
+        // If logged in, compare several identifying fields to the comment author
+        const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+        if(token){
+          const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+          if(payload){
+            // check email, name, preferred_username, sub/uid against comment fields
+            const possibles = [payload.email, payload.name, payload.preferred_username, payload.preferred_username, payload.sub, payload.uid].filter(Boolean).map(String);
+            const authorVals = [c.author, c.author_email, c.author_id].filter(Boolean).map(String);
+            for(const a of possibles){ for(const b of authorVals){ if(a === b) return true; } }
+          }
+        }
+        // anonymous deletion token saved on post
+        const anon = localStorage.getItem('c_del_'+c.id);
+        if(anon) return true;
+        return false;
+      }catch(e){ return false; }
+    }
 
-    async function postComment(lessonId, text, parentId){
+    async function postComment(lessonId, text, parentId, opts){
       try{
         const headers = {'Content-Type':'application/json'};
         const token = localStorage.getItem('token') || localStorage.getItem('authToken');
         if(token) headers['Authorization'] = 'Bearer '+token;
         const body = { text };
         if(parentId) body.parentId = parentId;
+        if(opts && opts.reply_to_id) body.reply_to_id = opts.reply_to_id;
+        if(opts && opts.reply_to_name) body.reply_to_name = opts.reply_to_name;
         const r = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments`, { method:'POST', headers, body: JSON.stringify(body) });
         const jb = await r.json().catch(()=>null);
         if(r.ok && jb && jb.deletion_token && jb.id) localStorage.setItem('c_del_'+jb.id, jb.deletion_token);
