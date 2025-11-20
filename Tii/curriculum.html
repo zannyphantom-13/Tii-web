@@ -143,16 +143,7 @@
                         openBtn.target = '_blank';
                         actionsWrap.appendChild(openBtn);
 
-                    // Admin-only actions for uploaded courses: visible when auth token exists
-                    const token = localStorage.getItem('authToken');
-                    if (token && c.id) {
-                        // Admins can manage courses via the portal; remove inline "Add Lesson" CTA to avoid upload prompts here.
-                        const manageBtn = document.createElement('a');
-                        manageBtn.className = 'mini-cta manage-inline';
-                        manageBtn.textContent = 'Manage';
-                        manageBtn.href = '/Tii/admin-portal.html?edit_course=' + encodeURIComponent(c.id);
-                        actionsWrap.appendChild(manageBtn);
-                    }
+                    // Admin-only inline actions were removed to keep course cards focused.
                     // attach actions and return the card element
                     a.appendChild(actionsWrap);
                     return a;
