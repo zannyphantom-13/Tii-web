@@ -180,10 +180,14 @@
 
                 data.courses
                     .filter(c => placementIsCurriculum(c.placement) && c.title && c.title.trim() !== '' )
-                    // Exclude uploaded/generated courses so they only appear on Other Courses
-                    .filter(c => !isUploadedCourse(c))
-                    // limit to the canonical set (case-insensitive)
-                    .filter(c => ALLOWED_TITLES.has((c.title||'').trim().toLowerCase()))
+                    // Include either canonical curriculum courses OR uploaded courses explicitly placed in 'curriculum'
+                    .filter(c => {
+                        const titleKey = (c.title||'').trim().toLowerCase();
+                        if (ALLOWED_TITLES.has(titleKey)) return true;
+                        // allow uploaded courses when placement is explicitly 'curriculum'
+                        if ((c.placement && String(c.placement).trim().toLowerCase() === 'curriculum') && isUploadedCourse(c)) return true;
+                        return false;
+                    })
                     .forEach(c => {
                         // avoid duplicates by title
                         const exists = Array.from(grid.querySelectorAll('.other-course-card')).some(card => card.querySelector('h4') && card.querySelector('h4').textContent.trim() === (c.title||'').trim());
