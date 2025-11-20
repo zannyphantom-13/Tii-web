@@ -8,6 +8,19 @@
 </head>
 <body>
   <header><a href="/Tii/admin-portal.html">← Back to Admin</a></header>
+  <style>
+    /* Upload Lesson - local improvements */
+    #existing-courses { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    #existing-courses .course-line { display:flex; gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0 }
+    #existing-courses .course-line a { color: #2a6e62; font-weight:600; text-decoration:none }
+    #recent-courses { display: grid; grid-template-columns: 1fr; gap:8px; }
+    .recent-item { display:flex; gap:10px; align-items:center; padding:8px; border-radius:6px; background: #fff; border:1px solid #f0f0f0 }
+    .recent-thumb{ width:64px; height:48px; object-fit:cover; border-radius:6px; flex-shrink:0 }
+    .recent-meta { display:flex; flex-direction:column }
+    .recent-meta strong { color:#2a6e62 }
+    .recent-meta .date { font-size:12px; color:#666 }
+    @media(min-width:900px){ #existing-courses{ grid-template-columns: 1fr 300px } .recent-list{ grid-template-columns: 1fr } }
+  </style>
   <script>
     // Guard this page: show form only to admins. Non-admins see a friendly message.
     (function(){
@@ -141,7 +154,14 @@
         recent.innerHTML = '';
         courses.sort((a,b)=> new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,6).forEach(c=>{
           const created = c.created_at ? new Date(c.created_at).toLocaleString() : '';
-          const d = document.createElement('div'); d.style.padding='6px 0'; d.innerHTML = `<strong>${c.title}</strong><div style="font-size:12px;color:#666">${created}</div>`; recent.appendChild(d);
+          const courseUrl = (c && c.url && c.url.trim()) ? c.url : (`/Tii/courses/${encodeURIComponent(c.id)}.html`);
+          const thumb = c.thumbnail || c.image_url || c.icon || '';
+          const item = document.createElement('div'); item.className='recent-item';
+          let inner = '';
+          if(thumb) inner += `<img class="recent-thumb" src="${thumb}" alt="${(c.title||'course').replace(/"/g,'')}">`;
+          inner += `<div class="recent-meta"><strong><a href="${courseUrl}" target="_blank">${(c.title||'Untitled')}</a></strong><div class="date">${created}</div></div>`;
+          item.innerHTML = inner;
+          recent.appendChild(item);
         });
         // If URL includes ?course=<id>, preselect it
         const params = new URLSearchParams(window.location.search);
