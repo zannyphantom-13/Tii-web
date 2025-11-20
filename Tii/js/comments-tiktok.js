@@ -94,6 +94,8 @@
         });
         menuPopup.appendChild(reportBtn);
 
+        // always show Delete in the menu UI; enable only when user has delete permission
+        const canDelete = canCurrentUserDelete(c);
         if(canEdit){
           const editBtn = el('button',{class:'tt-btn tt-edit-small'}, 'Edit');
           editBtn.addEventListener('click', (ev)=>{
@@ -130,7 +132,9 @@
           menuPopup.appendChild(editBtn);
 
           const del = el('button',{class:'tt-btn tt-delete-small'}, 'Delete');
-          del.addEventListener('click', async ()=>{ if(!confirm('Delete comment?')) return; await deleteComment(lessonId,c.id); loadComments(); });
+          // disable if current user cannot delete; show tooltip explaining why
+          if(!canDelete){ del.disabled = true; del.title = 'Only comment owner or admins may delete comments.'; }
+          del.addEventListener('click', async ()=>{ if(del.disabled) return; if(!confirm('Delete comment?')) return; await deleteComment(lessonId,c.id); loadComments(); });
           menuPopup.appendChild(del);
         }
 
@@ -172,11 +176,13 @@
 
       // three-dot menu for reply: Report (all), Edit/Delete (owner or admin)
       const canEditReply = canCurrentUserEdit(r);
+      const canDeleteReply = canCurrentUserDelete(r);
       const rmenuBtn = el('button',{class:'tt-btn tt-menu'}, '⋯'); rmenuBtn.style.padding='4px 8px'; rmenuBtn.style.fontSize='16px';
       const rmenuPopup = el('div',{class:'tt-menu-popup', style:'display:none;position:absolute;right:8px;top:8px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,0.12);z-index:1000'});
       const rreport = el('button',{class:'tt-btn tt-report-small'}, 'Report');
       rreport.addEventListener('click', async ()=>{ const reason = prompt('Reason for reporting this reply (optional):'); if(reason===null) return; try{ const rr = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments/${encodeURIComponent(r.id)}/report`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ reason }) }); if(rr.ok) alert('Reply reported'); else alert('Report failed'); }catch(e){alert('Report failed');} });
       rmenuPopup.appendChild(rreport);
+      // Edit shown when allowed; Delete is always visible but disabled when not allowed
       if(canEditReply){
         const redit = el('button',{class:'tt-btn tt-edit-small'}, 'Edit');
         redit.addEventListener('click', (ev)=>{
@@ -185,7 +191,11 @@
           save.addEventListener('click', async ()=>{ const newText = ta.value.trim(); if(!newText){ alert('Reply cannot be empty'); return; } try{ const headers={'Content-Type':'application/json'}; const token = localStorage.getItem('token') || localStorage.getItem('authToken'); if(token) headers['Authorization']='Bearer '+token; const rres = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments/${encodeURIComponent(r.id)}`, { method:'PUT', headers, body: JSON.stringify({ text: newText }) }); if(rres.ok) loadComments(); else { const jb = await rres.json().catch(()=>null); alert(jb && jb.message ? jb.message : 'Edit failed'); } }catch(e){ alert('Edit failed'); } });
         });
         rmenuPopup.appendChild(redit);
-        const rdel = el('button',{class:'tt-btn tt-delete-small'}, 'Delete'); rdel.addEventListener('click', async ()=>{ if(!confirm('Delete reply?')) return; await deleteComment(lessonId,r.id); loadComments(); }); rmenuPopup.appendChild(rdel);
+      }
+      // Delete button for reply (always present but disabled if user cannot delete)
+      const rdel = el('button',{class:'tt-btn tt-delete-small'}, 'Delete');
+      if(!canDeleteReply){ rdel.disabled = true; rdel.title = 'Only reply owner or admins may delete replies.'; }
+      rdel.addEventListener('click', async ()=>{ if(rdel.disabled) return; if(!confirm('Delete reply?')) return; await deleteComment(lessonId,r.id); loadComments(); }); rmenuPopup.appendChild(rdel);
       }
       rmenuBtn.addEventListener('click',(ev)=>{ ev.stopPropagation(); rmenuPopup.style.display = rmenuPopup.style.display==='none'?'block':'none'; });
       document.addEventListener('click', ()=>{ try{ rmenuPopup.style.display='none'; }catch(e){} });

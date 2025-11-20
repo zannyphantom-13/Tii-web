@@ -1909,3 +1909,25 @@ pre, code {
     .comments-section.tiktok .avatar { width: 44px; height: 44px; }
 }
 
+/* --- Comment menu (three-dot) styles --- */
+.tt-comment, .tt-reply { position: relative; }
+.tt-menu { background: transparent; border: none; cursor: pointer; color: #555; padding: 6px; font-size: 18px; }
+.tt-menu:focus { outline: none; }
+.tt-menu-popup { min-width: 140px; }
+.tt-menu-popup button { display: block; width: 100%; text-align: left; padding: 8px 10px; background: transparent; border: none; cursor: pointer; font-size: 14px; }
+.tt-menu-popup button:hover { background: #f7f7f7; }
+.tt-delete-small { color: #c0392b; }
+.tt-edit-small { color: #1f5047; }
+.tt-report-small { color: #e67e22; }
+
+/* Disabled state for menu buttons */
+.tt-menu-popup button:disabled { color: #999; opacity: 0.6; cursor: not-allowed; }
+
+/* Edit form inside comment */
+.tt-edit-form { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.tt-edit-form textarea { min-height: 60px; padding: 8px; border-radius: 6px; border: 1px solid #ddd; resize: vertical; }
+.tt-edit-actions { display:flex; gap:8px; }
+.tt-edit-actions button { padding: 8px 12px; border-radius:6px; border:none; cursor:pointer; }
+.tt-edit-actions .save { background:#2a6e62;color:#fff }
+.tt-edit-actions .cancel { background:#f2f2f2;color:#333 }
+
