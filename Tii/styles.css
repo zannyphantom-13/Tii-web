@@ -1854,6 +1854,41 @@ main {
 /* Ensure interactive elements are tappable on mobile */
 button, .btn, .mini-cta { touch-action: manipulation; }
 
+/* Defensive mobile overflow fixes: prevent content spill-out on generated pages */
+/* Apply wrapping and safe max-widths for common elements that can overflow */
+.course-body, .tt-text, .comment-text, .ad-item-manage small, .form-card, main {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+/* Make sure images/iframes never exceed container width */
+.course-body img, .lesson-card img, .other-course-card img, .ad-image-container img, iframe {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Pre/code: allow wrapping and scroll when needed to avoid pushing layout */
+pre, code {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
+}
+
+/* Ensure top-level layout elements don't have accidental fixed widths */
+.form-page-container, .form-card, .course-hero {
+    box-sizing: border-box;
+    max-width: 100%;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+/* Small screens: force no horizontal overflow and reduce large paddings */
+@media (max-width: 420px) {
+    body, html { overflow-x: hidden; }
+    header { padding-left: 10px; padding-right: 10px; }
+    .course-hero { padding: 14px; margin: 12px; }
+}
+
 /* TikTok-style compact comment layout (mobile-first) */
 .comments-section.tiktok { padding: 8px 0; }
 .comments-section.tiktok .comments-list { display: flex; flex-direction: column; gap: 6px; }
