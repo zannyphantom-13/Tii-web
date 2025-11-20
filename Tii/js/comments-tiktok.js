@@ -73,21 +73,70 @@
       const replyBtn = el('button',{class:'tt-btn'}, 'Reply');
       actions.appendChild(replyBtn);
 
-      // Three-dot menu for additional actions (Delete). Shown only when user can delete (owner or admin)
-      const canDelete = canCurrentUserDelete(c);
-      if (canDelete){
+        // Three-dot menu: Report (all users) and Edit/Delete (owner or admin)
+        const canEdit = canCurrentUserEdit(c);
         const menuBtn = el('button',{class:'tt-btn tt-menu'}, '⋯');
         menuBtn.style.padding = '6px 10px'; menuBtn.style.fontSize = '18px'; menuBtn.style.lineHeight='1';
         const menuPopup = el('div',{class:'tt-menu-popup', style:'display:none;position:absolute;right:8px;top:36px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,0.12);z-index:1000'});
-        const del = el('button',{class:'tt-btn tt-delete-small', style:'background:none;border:none;color:#c0392b;padding:6px 10px;cursor:pointer;'}, 'Delete');
-        del.addEventListener('click', async ()=>{ if(!confirm('Delete comment?')) return; await deleteComment(lessonId,c.id); loadComments(); });
-        menuPopup.appendChild(del);
-        // toggle
+
+        // Report (available to anyone)
+        const reportBtn = el('button',{class:'tt-btn tt-report-small'}, 'Report');
+        reportBtn.addEventListener('click', async ()=>{
+          try{
+            const reason = prompt('Reason for reporting this comment (optional):');
+            if(reason === null) return;
+            const r = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments/${encodeURIComponent(c.id)}/report`, {
+              method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ reason })
+            });
+            if (r.ok) { alert('Comment reported. Thank you.'); menuPopup.style.display='none'; }
+            else { alert('Report failed (server may not support reporting).'); }
+          }catch(e){ console.warn('report error',e); alert('Report failed'); }
+        });
+        menuPopup.appendChild(reportBtn);
+
+        if(canEdit){
+          const editBtn = el('button',{class:'tt-btn tt-edit-small'}, 'Edit');
+          editBtn.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            const textEl = box.querySelector('.tt-text');
+            if(!textEl) return;
+            const orig = textEl.textContent || '';
+            textEl.style.display = 'none';
+            const editForm = el('div',{class:'tt-edit-form'});
+            const ta = el('textarea',{});
+            ta.value = orig; ta.style.minHeight='60px';
+            const actionsWrap = el('div',{class:'tt-edit-actions'});
+            const save = el('button',{class:'save'}, 'Save');
+            const cancel = el('button',{class:'cancel'}, 'Cancel');
+            actionsWrap.appendChild(save); actionsWrap.appendChild(cancel);
+            editForm.appendChild(ta); editForm.appendChild(actionsWrap);
+            textEl.parentNode.insertBefore(editForm, textEl.nextSibling);
+
+            cancel.addEventListener('click', ()=>{ try{ editForm.remove(); textEl.style.display='block'; }catch(e){} });
+            save.addEventListener('click', async ()=>{
+              const newText = ta.value.trim(); if(!newText){ alert('Comment cannot be empty'); return; }
+              try{
+                const headers = {'Content-Type':'application/json'}; const token = localStorage.getItem('token') || localStorage.getItem('authToken'); if(token) headers['Authorization']='Bearer '+token;
+                const r = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments/${encodeURIComponent(c.id)}`, { method: 'PUT', headers, body: JSON.stringify({ text: newText }) });
+                if (r.ok) { loadComments(); }
+                else {
+                  const jb = await r.json().catch(()=>null);
+                  alert(jb && jb.message ? jb.message : 'Edit failed (server may not support edit).');
+                }
+              }catch(e){ console.error('edit error',e); alert('Edit failed'); }
+            });
+            menuPopup.style.display='none';
+          });
+          menuPopup.appendChild(editBtn);
+
+          const del = el('button',{class:'tt-btn tt-delete-small'}, 'Delete');
+          del.addEventListener('click', async ()=>{ if(!confirm('Delete comment?')) return; await deleteComment(lessonId,c.id); loadComments(); });
+          menuPopup.appendChild(del);
+        }
+
         menuBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); menuPopup.style.display = menuPopup.style.display==='none'?'block':'none'; });
-        // close on outside click
         document.addEventListener('click', ()=>{ try{ menuPopup.style.display='none'; }catch(e){} });
         actions.appendChild(menuBtn); actions.appendChild(menuPopup);
-      }
 
       body.appendChild(actions);
 
@@ -121,19 +170,26 @@
       const replyBtn = el('button',{class:'tt-btn tt-reply-small'}, 'Reply');
       replyActions.appendChild(replyBtn);
 
-      // three-dot menu for reply delete if permitted
-      const canDeleteReply = canCurrentUserDelete(r);
-      if (canDeleteReply){
-        const menuBtn = el('button',{class:'tt-btn tt-menu'}, '⋯');
-        menuBtn.style.padding = '4px 8px'; menuBtn.style.fontSize = '16px'; menuBtn.style.lineHeight='1';
-        const menuPopup = el('div',{class:'tt-menu-popup', style:'display:none;position:absolute;right:8px;top:8px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,0.12);z-index:1000'});
-        const del = el('button',{class:'tt-btn tt-delete-small', style:'background:none;border:none;color:#c0392b;padding:6px 10px;cursor:pointer;'}, 'Delete');
-        del.addEventListener('click', async ()=>{ if(!confirm('Delete reply?')) return; await deleteComment(lessonId,r.id); loadComments(); });
-        menuPopup.appendChild(del);
-        menuBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); menuPopup.style.display = menuPopup.style.display==='none'?'block':'none'; });
-        document.addEventListener('click', ()=>{ try{ menuPopup.style.display='none'; }catch(e){} });
-        replyActions.appendChild(menuBtn); replyActions.appendChild(menuPopup);
+      // three-dot menu for reply: Report (all), Edit/Delete (owner or admin)
+      const canEditReply = canCurrentUserEdit(r);
+      const rmenuBtn = el('button',{class:'tt-btn tt-menu'}, '⋯'); rmenuBtn.style.padding='4px 8px'; rmenuBtn.style.fontSize='16px';
+      const rmenuPopup = el('div',{class:'tt-menu-popup', style:'display:none;position:absolute;right:8px;top:8px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,0.12);z-index:1000'});
+      const rreport = el('button',{class:'tt-btn tt-report-small'}, 'Report');
+      rreport.addEventListener('click', async ()=>{ const reason = prompt('Reason for reporting this reply (optional):'); if(reason===null) return; try{ const rr = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments/${encodeURIComponent(r.id)}/report`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ reason }) }); if(rr.ok) alert('Reply reported'); else alert('Report failed'); }catch(e){alert('Report failed');} });
+      rmenuPopup.appendChild(rreport);
+      if(canEditReply){
+        const redit = el('button',{class:'tt-btn tt-edit-small'}, 'Edit');
+        redit.addEventListener('click', (ev)=>{
+          ev.stopPropagation(); const textEl = box.querySelector('.tt-text'); if(!textEl) return; const orig = textEl.textContent||''; textEl.style.display='none'; const editForm = el('div',{class:'tt-edit-form'}); const ta = el('textarea',{}); ta.value = orig; const actionsWrap = el('div',{class:'tt-edit-actions'}); const save = el('button',{class:'save'}, 'Save'); const cancel = el('button',{class:'cancel'}, 'Cancel'); actionsWrap.appendChild(save); actionsWrap.appendChild(cancel); editForm.appendChild(ta); editForm.appendChild(actionsWrap); textEl.parentNode.insertBefore(editForm, textEl.nextSibling);
+          cancel.addEventListener('click', ()=>{ try{ editForm.remove(); textEl.style.display='block'; }catch(e){} });
+          save.addEventListener('click', async ()=>{ const newText = ta.value.trim(); if(!newText){ alert('Reply cannot be empty'); return; } try{ const headers={'Content-Type':'application/json'}; const token = localStorage.getItem('token') || localStorage.getItem('authToken'); if(token) headers['Authorization']='Bearer '+token; const rres = await fetch(`${apiBase}/api/courses/${encodeURIComponent(COURSE_ID)}/lessons/${encodeURIComponent(lessonId)}/comments/${encodeURIComponent(r.id)}`, { method:'PUT', headers, body: JSON.stringify({ text: newText }) }); if(rres.ok) loadComments(); else { const jb = await rres.json().catch(()=>null); alert(jb && jb.message ? jb.message : 'Edit failed'); } }catch(e){ alert('Edit failed'); } });
+        });
+        rmenuPopup.appendChild(redit);
+        const rdel = el('button',{class:'tt-btn tt-delete-small'}, 'Delete'); rdel.addEventListener('click', async ()=>{ if(!confirm('Delete reply?')) return; await deleteComment(lessonId,r.id); loadComments(); }); rmenuPopup.appendChild(rdel);
       }
+      rmenuBtn.addEventListener('click',(ev)=>{ ev.stopPropagation(); rmenuPopup.style.display = rmenuPopup.style.display==='none'?'block':'none'; });
+      document.addEventListener('click', ()=>{ try{ rmenuPopup.style.display='none'; }catch(e){} });
+      replyActions.appendChild(rmenuBtn); replyActions.appendChild(rmenuPopup);
       // small inline reply form
       const inlineForm = el('form',{class:'tt-reply-inline', style:'display:none;margin-top:8px'});
       const inlineTa = el('textarea',{class:'tt-input', placeholder:'Reply...'});
@@ -173,6 +229,11 @@
         if(anon) return true;
         return false;
       }catch(e){ return false; }
+    }
+
+    // Helper: whether current user may edit this comment (owner or admin)
+    function canCurrentUserEdit(c){
+      try{ return canCurrentUserDelete(c); }catch(e){ return false; }
     }
 
     async function postComment(lessonId, text, parentId, opts){
