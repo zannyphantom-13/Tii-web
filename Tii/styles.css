@@ -1371,6 +1371,23 @@ main {
     margin-bottom: 5px;
 }
 
+/* Base layout for ad-delete list items */
+.ad-delete-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ad-item-manage {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+}
+
 .ad-item-manage p {
     margin: 5px 0;
     color: #555;

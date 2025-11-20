@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload Course - Admin</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="/Tii/styles.css">
     <script src="/Tii/user-loader.js" defer></script>
 </head>
 <body>
@@ -12,7 +12,8 @@
         <a href="/Tii/admin-portal.html">← Back to Admin</a>
         <a id="auth-button" href="/Tii/login.html" class="login-btn">Login</a>
     </header>
-    <main style="max-width:800px;margin:40px auto;">
+    <main class="form-page-container">
+        <div class="form-card" style="max-width:800px;margin:40px auto;">
         <h2>Add New Course (Admin Only)</h2>
 
         <div id="not-admin-message" style="color:#555;margin-bottom:16px">
@@ -38,6 +39,7 @@
             <button type="submit" class="submit-btn">Add Course</button>
             <div id="upload-course-message" style="margin-top:12px;"></div>
         </form>
+        </div>
     </main>
     <script>
     (function(){
